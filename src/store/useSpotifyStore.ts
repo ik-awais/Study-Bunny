@@ -29,16 +29,34 @@ export const useSpotifyStore = create<SpotifyState>()((set, get) => ({
     const { accessToken, logout } = get();
     if (!accessToken) return;
     try {
-      const res = await fetch('https://api.spotify.com/v1/me/player', {
+      // Added ?additional_types=episode to support Podcasts
+      const res = await fetch('https://api.spotify.com/v1/me/player?additional_types=episode', {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
-      if (res.status === 401) return logout(); // Token expired
-      if (res.status === 204 || res.status > 400) {
+      
+      if (res.status === 401) {
+        console.warn("Spotify token expired. Logging out.");
+        return logout(); 
+      }
+      
+      if (res.status === 204) {
+        console.log("Spotify API returned 204 (No Content). Spotify's servers do not see an active device for this account.");
         set({ currentTrack: null, isPlaying: false });
         return;
       }
+      
+      if (res.status > 400) {
+        console.error("Spotify API returned an error:", res.status);
+        set({ currentTrack: null, isPlaying: false });
+        return;
+      }
+      
       const data = await res.json();
+      console.log("Spotify API Response payload:", data); // Tells us exactly what Spotify sees
+      
       set({ currentTrack: data.item, isPlaying: data.is_playing });
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error("Spotify fetch error:", e); 
+    }
   }
 }));
