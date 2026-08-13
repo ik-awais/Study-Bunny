@@ -1,128 +1,158 @@
 import { create } from 'zustand';
-import { getAllData, addGoal, deleteGoal, addPlannerItem, updatePlannerItem, deletePlannerItem, type SessionRecord, type GoalRecord, type PlannerRecord } from '../lib/db';
+import { initDB } from '../lib/db';
+import type { Session, Goal, PlannerItem } from '../lib/db';
 
-const getLocalYYYYMMDD = (d: Date) => {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-interface DataState {
-  sessions: SessionRecord[];
-  goals: GoalRecord[];
-  planner: PlannerRecord[];
-  stats: {
-    todayMs: number;
-    weeklyMs: number;
-    monthlyMs: number;
-    completedCount: number;
-    streak: number;
-    longestStreak: number;
-    avgSessionMs: number;
-    last7Days: { date: string; ms: number }[];
-  };
-  refreshAll: () => Promise<void>;
-  
-  createGoal: (g: Omit<GoalRecord, 'id'>) => Promise<void>;
-  removeGoal: (id: string) => Promise<void>;
-  createPlanner: (p: Omit<PlannerRecord, 'id'>) => Promise<void>;
-  togglePlanner: (id: string, completed: boolean) => Promise<void>;
-  removePlanner: (id: string) => Promise<void>;
-  addPlannerItem: (item: any) => Promise<void>;
+interface Stats {
+  todayMs: number;
+  weeklyMs: number;
+  totalMs: number;
+  completedCount: number;
+  avgSessionMs: number;
+  streak: number;
 }
 
-export const useDataStore = create<DataState>()((set, get) => ({
-  sessions: [], goals: [], planner: [],
-  stats: { todayMs: 0, weeklyMs: 0, monthlyMs: 0, completedCount: 0, streak: 0, longestStreak: 0, avgSessionMs: 0, last7Days: [] },
-  
-  refreshAll: async () => {
-    const data = await getAllData();
-    const now = new Date();
-    const todayStr = getLocalYYYYMMDD(now);
-    
-    // Time boundaries safely handled without timezone offsets
-    const monthPrefix = todayStr.substring(0, 7);
-    const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1; // Mon = 0, Sun = 6
-    const monday = new Date(now);
-    monday.setDate(monday.getDate() - dayOfWeek);
-    const mondayStr = getLocalYYYYMMDD(monday);
+interface DataState {
+  stats: Stats;
+  goals: Goal[];
+  planner: PlannerItem[];
+  history: Session[];
 
-    let todayMs = 0; let weeklyMs = 0; let monthlyMs = 0;
-    let totalMs = 0; let completedCount = 0;
+  refreshAll: () => Promise<void>;
+  createGoal: (goal: Omit<Goal, 'id'>) => Promise<void>;
+  deleteGoal: (id: string) => Promise<void>;
+  addPlannerItem: (item: Omit<PlannerItem, 'id' | 'completed'> & { completed?: boolean }) => Promise<void>;
+  togglePlanner: (id: string, completed: boolean) => Promise<void>;
+}
+
+export const useDataStore = create<DataState>((set, get) => ({
+  stats: { todayMs: 0, weeklyMs: 0, totalMs: 0, completedCount: 0, avgSessionMs: 0, streak: 0 },
+  goals: [],
+  planner: [],
+  history: [],
+
+  refreshAll: async () => {
+    const db = await initDB();
+    const tx = db.transaction(['sessions', 'goals', 'planner'], 'readonly');
     
+    // Fetch Goals with strict event typing
+    const goals = await new Promise<Goal[]>((resolve) => {
+      const req = tx.objectStore('goals').getAll();
+      req.onsuccess = (event) => {
+        const target = event.target as IDBRequest;
+        resolve(target.result as Goal[]);
+      };
+    });
+    
+    // Fetch Planner
+    const planner = await new Promise<PlannerItem[]>((resolve) => {
+      const req = tx.objectStore('planner').getAll();
+      req.onsuccess = (event) => {
+        const target = event.target as IDBRequest;
+        resolve(target.result as PlannerItem[]);
+      };
+    });
+
+    // Fetch Sessions (History)
+    const sessions = await new Promise<Session[]>((resolve) => {
+      const req = tx.objectStore('sessions').getAll();
+      req.onsuccess = (event) => {
+        const target = event.target as IDBRequest;
+        resolve(target.result as Session[]);
+      };
+    });
+
+    // Math Engine
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA');
+    const sevenDaysAgo = Date.now() - (7 * 24 * 3600 * 1000);
+
+    let todayMs = 0;
+    let weeklyMs = 0;
+    let totalMs = 0;
+    let completedCount = 0;
     const dailyTotals: Record<string, number> = {};
 
-    data.sessions.forEach(s => {
-      totalMs += s.actualDurationMs;
-      if (s.completed) completedCount++;
-      if (s.date === todayStr) todayMs += s.actualDurationMs;
-      if (s.date >= mondayStr) weeklyMs += s.actualDurationMs;
-      if (s.date.startsWith(monthPrefix)) monthlyMs += s.actualDurationMs;
+    sessions.forEach(s => {
+      const duration = s.actualDurationMs || 0;
+      totalMs += duration;
       
-      dailyTotals[s.date] = (dailyTotals[s.date] || 0) + s.actualDurationMs;
+      if (s.date === todayStr) todayMs += duration;
+      if (s.timestamp >= sevenDaysAgo) weeklyMs += duration;
+      if (s.completed) completedCount++;
+
+      if (!dailyTotals[s.date]) dailyTotals[s.date] = 0;
+      dailyTotals[s.date] += duration;
     });
 
-    // Streak Calculation (Minimum 20 mins to count as a study day)
-    const thresholdMs = 20 * 60 * 1000;
-    const qualifyingDates = Object.keys(dailyTotals).filter(d => dailyTotals[d] >= thresholdMs).sort().reverse();
+    const avgSessionMs = completedCount > 0 ? Math.floor(totalMs / completedCount) : 0;
     
+    // Streak Math
     let currentStreak = 0;
     let checkDate = new Date();
-    let checkStr = getLocalYYYYMMDD(checkDate);
     
-    if (!qualifyingDates.includes(checkStr)) {
-      checkDate.setDate(checkDate.getDate() - 1); // Check yesterday
-      checkStr = getLocalYYYYMMDD(checkDate);
-    }
-    
-    while(qualifyingDates.includes(checkStr)) {
-      currentStreak++;
-      checkDate.setDate(checkDate.getDate() - 1);
-      checkStr = getLocalYYYYMMDD(checkDate);
+    while (true) {
+       const dStr = checkDate.toLocaleDateString('en-CA');
+       if (dailyTotals[dStr] && dailyTotals[dStr] >= 1200000) { 
+           currentStreak++;
+           checkDate.setDate(checkDate.getDate() - 1); 
+       } else if (currentStreak === 0 && dStr === todayStr) {
+           checkDate.setDate(checkDate.getDate() - 1); 
+       } else {
+           break;
+       }
     }
 
-    // Trend (Last 7 Days)
-    const last7Days = Array.from({length: 7}).map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      const ds = getLocalYYYYMMDD(d);
-      return { date: ds, ms: dailyTotals[ds] || 0 };
-    });
+    const history = sessions.sort((a, b) => b.timestamp - a.timestamp);
 
-    set({
-      sessions: data.sessions.sort((a,b) => b.timestamp - a.timestamp),
-      goals: data.goals,
-      planner: data.planner.sort((a,b) => a.date.localeCompare(b.date)),
-      stats: {
-        todayMs, weeklyMs, monthlyMs, completedCount, streak: currentStreak,
-        longestStreak: currentStreak, // simplified for now
-        avgSessionMs: completedCount ? totalMs / completedCount : 0,
-        last7Days
-      }
+    set({ 
+      goals, 
+      planner, 
+      history,
+      stats: { todayMs, weeklyMs, totalMs, completedCount, avgSessionMs, streak: currentStreak } 
     });
   },
 
-  createGoal: async (g) => { await addGoal(g); await get().refreshAll(); },
-  removeGoal: async (id) => { await deleteGoal(id); await get().refreshAll(); },
-  
-  addPlannerItem: async (item) => {
-    const { initDB } = await import('../lib/db');
+  createGoal: async (goal) => {
     const db = await initDB();
-    const tx = db.transaction('planner', 'readwrite');
-    const newItem = { 
-      ...item, 
-      id: Date.now().toString(),
-      completed: item.completed || false 
-    };
-    tx.objectStore('planner').put(newItem);
-    await tx.done;
-    
-    // Refresh the UI state after saving
+    const tx = db.transaction('goals', 'readwrite');
+    tx.objectStore('goals').put({ ...goal, id: Date.now().toString() });
+    await new Promise(res => tx.oncomplete = res);
     get().refreshAll();
   },
 
-  createPlanner: async (p) => { await addPlannerItem(p); await get().refreshAll(); },
-  removePlanner: async (id) => { await deletePlannerItem(id); await get().refreshAll(); },
-  togglePlanner: async (id, completed) => {
-    const item = get().planner.find(p => p.id === id);
-    if (item) { await updatePlannerItem({ ...item, completed }); await get().refreshAll(); }
+  deleteGoal: async (id) => {
+    const db = await initDB();
+    const tx = db.transaction('goals', 'readwrite');
+    tx.objectStore('goals').delete(id);
+    await new Promise(res => tx.oncomplete = res);
+    get().refreshAll();
   },
+
+  addPlannerItem: async (item) => {
+    const db = await initDB();
+    const tx = db.transaction('planner', 'readwrite');
+    tx.objectStore('planner').put({ ...item, id: Date.now().toString(), completed: item.completed || false });
+    await new Promise(res => tx.oncomplete = res);
+    get().refreshAll();
+  },
+
+  togglePlanner: async (id, completed) => {
+    const db = await initDB();
+    const tx = db.transaction('planner', 'readwrite');
+    const store = tx.objectStore('planner');
+    const req = store.get(id);
+    
+    // Strict typing for retrieval and update
+    req.onsuccess = (event) => {
+       const target = event.target as IDBRequest;
+       const data = target.result as PlannerItem | undefined;
+       if (data) {
+           data.completed = completed;
+           store.put(data);
+       }
+    };
+    
+    await new Promise(res => tx.oncomplete = res);
+    get().refreshAll();
+  }
 }));

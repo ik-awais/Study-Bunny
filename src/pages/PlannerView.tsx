@@ -3,7 +3,7 @@ import { Card, Button, Input} from '../components/ui/SharedUI';
 import { Calendar as CalendarIcon, Plus, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useDataStore } from '../store/useDataStore';
 import { useTimerStore } from '../store/useTimerStore';
-import { formatDurationAdaptive } from '../lib/timeUtils';
+import { formatDuration } from '../lib/timeUtils';
 import { useNavigate } from 'react-router-dom';
 
 export const PlannerView = () => {
@@ -97,7 +97,7 @@ export const PlannerView = () => {
              ${event.completed ? 'bg-bunny-cream/90 opacity-60 border-bunny-border' : 'bg-white border-l-4 border-l-bunny-primary border-bunny-border'}`} 
              style={{ top: `${topOffset}px`, height: `${height}px`, left: leftOffset }}>
           <span className="font-bold text-xs leading-tight truncate text-bunny-text">{event.title}</span>
-          <span className="text-[10px] font-bold text-bunny-muted truncate">{event.startTime} • {formatDurationAdaptive(event.plannedDurationMs, true)}</span>
+          <span className="text-[10px] font-bold text-bunny-muted truncate">{event.startTime} • {formatDuration(event.plannedDurationMs, { compact: true })}</span>
         </div>
       );
     });

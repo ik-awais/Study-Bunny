@@ -3,6 +3,7 @@ import { Play, Square, RotateCcw, Pause } from 'lucide-react';
 import { BunnyEars, BunnyFaceFocused, BunnySleep, BunnyFaceHappy, BunnyFaceBreak } from '../components/ui/BunnyElements';
 import { Badge } from '../components/ui/SharedUI';
 import { useTimerStore } from '../store/useTimerStore';
+import { formatDuration } from '../lib/timeUtils';
 
 const formatTime = (ms: number) => {
   if (ms < 0) ms = 0;
@@ -27,6 +28,9 @@ export const TimerView = () => {
     if (isRunning) return <BunnyFaceFocused className="w-full" />;
     return <div className="text-center font-bold text-xl text-bunny-muted tracking-widest">- -</div>;
   };
+
+  // Calculate accumulated time for completion summary
+  const accumulatedMs = targetDurationMs - remainingMs;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in pb-10">
@@ -107,6 +111,23 @@ export const TimerView = () => {
           </button>
         )}
       </div>
+
+      {/* Session Complete Summary */}
+      {status === 'completed' && (
+        <div className="mt-12 p-6 bg-white rounded-2xl shadow-lg border border-bunny-border max-w-md w-full text-center animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="text-4xl mb-3">🎉</div>
+          <h3 className="text-xl font-bold font-rounded text-bunny-text mb-2">Session Complete!</h3>
+          <p className="text-bunny-muted font-medium mb-4">
+            You focused for {formatDuration(accumulatedMs)}!
+          </p>
+          <button 
+            onClick={() => stop(false)} 
+            className="px-6 py-2 bg-bunny-primary text-white rounded-xl font-medium hover:bg-pink-400 transition-colors"
+          >
+            Start New Session
+          </button>
+        </div>
+      )}
     </div>
   );
 };

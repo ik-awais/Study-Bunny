@@ -4,6 +4,7 @@ import { Card, Button, ProgressBar, Badge } from '../components/ui/SharedUI';
 import { SpotifyWidget } from '../components/spotify/SpotifyWidget';
 import { useTimerStore } from '../store/useTimerStore';
 import { useDataStore } from '../store/useDataStore';
+import { formatDuration } from '../lib/timeUtils'; // 🚀 IMPORTED
 
 export const Dashboard = () => {
   const navigate = useNavigate();
@@ -19,7 +20,6 @@ export const Dashboard = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-12">
       
-      {/* 1. Primary Header */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-bunny-muted text-sm font-bold uppercase tracking-wider mb-1">{currentDate}</h2>
@@ -31,7 +31,6 @@ export const Dashboard = () => {
         </Card>
       </header>
 
-      {/* 2. Primary Study Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="md:col-span-2 bg-bunny-primary text-white border-none flex flex-col sm:flex-row items-center justify-between gap-6 shadow-lg relative overflow-hidden">
           <div className="z-10">
@@ -42,7 +41,8 @@ export const Dashboard = () => {
               {status === 'running' ? 'Session in Progress' : 'Pomodoro Session'}
             </h2>
             <p className="text-sm font-medium opacity-90">
-              {status === 'running' ? `Time remaining: ${Math.ceil(remainingMs / 60000)} min` : '25 min deep focus • 5 min short break'}
+              {/* 🚀 FORMATTED REMAINING TIME */}
+              {status === 'running' ? `Time remaining: ${formatDuration(remainingMs, { compact: true })}` : '25 min deep focus • 5 min short break'}
             </p>
           </div>
           <Link to="/timer" className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-md hover:scale-105 hover:shadow-xl transition-all text-bunny-primary flex-shrink-0 z-10">
@@ -58,32 +58,34 @@ export const Dashboard = () => {
             <div>
               <h3 className="font-bold text-bunny-muted mb-1">{defaultDaily ? defaultDaily.title : "Today's Goal"}</h3>
               <div className="text-3xl font-bold font-rounded text-bunny-text">
-                {(dailyTargetMs / 3600000).toFixed(1)} Hrs
+                {/* 🚀 FORMATTED TOTAL TARGET */}
+                {formatDuration(dailyTargetMs, { compact: false })}
               </div>
             </div>
             <Trophy className="w-6 h-6 text-yellow-500" />
           </div>
           <div>
             <div className="flex justify-between text-sm font-bold mb-2">
-              <span className="text-bunny-text">{Math.floor(stats.todayMs / 60000)}m done</span>
-              <span className="text-bunny-muted">{Math.max(0, Math.floor((dailyTargetMs - stats.todayMs) / 60000))}m left</span>
+              {/* 🚀 FORMATTED PROGRESS & REMAINING */}
+              <span className="text-bunny-text">{formatDuration(stats.todayMs, { compact: true })} done</span>
+              <span className="text-bunny-muted">{formatDuration(Math.max(0, dailyTargetMs - stats.todayMs), { compact: true })} left</span>
             </div>
             <ProgressBar progress={(stats.todayMs / dailyTargetMs) * 100} />
           </div>
         </Card>
       </div>
 
-      {/* 3. Wide Statistics Banner */}
       <Card className="w-full bg-bunny-card border-bunny-border">
          <h3 className="font-bold font-rounded text-lg mb-4 text-bunny-text">Overview</h3>
          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 divide-x divide-bunny-border/50">
             <div className="text-center px-2">
                <p className="text-xs font-bold text-bunny-muted uppercase tracking-wider mb-1">Today</p>
-               <p className="text-2xl font-bold font-rounded text-bunny-text">{Math.floor(stats.todayMs / 60000)}m</p>
+               {/* 🚀 FORMATTED STATS */}
+               <p className="text-2xl font-bold font-rounded text-bunny-text">{formatDuration(stats.todayMs, { compact: true })}</p>
             </div>
             <div className="text-center px-2 border-l-0 md:border-l">
                <p className="text-xs font-bold text-bunny-muted uppercase tracking-wider mb-1">This Week</p>
-               <p className="text-2xl font-bold font-rounded text-bunny-text">{(stats.weeklyMs / 3600000).toFixed(1)}h</p>
+               <p className="text-2xl font-bold font-rounded text-bunny-text">{formatDuration(stats.weeklyMs, { compact: true })}</p>
             </div>
             <div className="text-center px-2">
                <p className="text-xs font-bold text-bunny-muted uppercase tracking-wider mb-1">Sessions</p>
@@ -91,12 +93,11 @@ export const Dashboard = () => {
             </div>
             <div className="text-center px-2 border-l-0 md:border-l">
                <p className="text-xs font-bold text-bunny-muted uppercase tracking-wider mb-1">Avg Time</p>
-               <p className="text-2xl font-bold font-rounded text-bunny-text">{Math.round(stats.avgSessionMs / 60000)}m</p>
+               <p className="text-2xl font-bold font-rounded text-bunny-text">{formatDuration(stats.avgSessionMs, { compact: true })}</p>
             </div>
          </div>
       </Card>
 
-      {/* 4. Secondary Workflow & Companion */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <div className="flex justify-between items-center mb-6">
@@ -115,7 +116,8 @@ export const Dashboard = () => {
                     <div>
                       <h4 className={`font-bold text-bunny-text ${p.completed ? 'line-through text-bunny-muted' : ''}`}>{p.title}</h4>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs font-bold text-bunny-muted">{Math.round(p.plannedDurationMs / 60000)} min</span>
+                        {/* 🚀 FORMATTED PLANNER TIME */}
+                        <span className="text-xs font-bold text-bunny-muted">{formatDuration(p.plannedDurationMs, { compact: true })}</span>
                         <span className="w-1 h-1 rounded-full bg-bunny-border"></span>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-bunny-primary">{p.subject}</span>
                       </div>

@@ -1,74 +1,91 @@
-import { Card, EmptyState } from '../components/ui/SharedUI';
+import { BarChart as BarChartIcon, TrendingUp, Clock, CheckCircle } from 'lucide-react';
+import { Card } from '../components/ui/SharedUI';
 import { useDataStore } from '../store/useDataStore';
+import { formatDuration } from '../lib/timeUtils';
 
 export const StatsView = () => {
-  const { stats, sessions } = useDataStore();
-  const hasData = sessions.length > 0;
-  
-  const formatHrs = (ms: number) => (ms / 3600000).toFixed(1);
+  const { stats, history } = useDataStore();
 
   return (
-    <div className="space-y-6 animate-in fade-in pb-10">
-      <h1 className="text-3xl font-rounded font-bold mb-8">Your Progress</h1>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        {[
-          { label: 'Weekly Hours', val: formatHrs(stats.weeklyMs) },
-          { label: 'Total Sessions', val: stats.completedCount.toString() },
-          { label: 'Current Streak', val: `${stats.streak} Days` },
-          { label: 'Avg Session', val: `${Math.round(stats.avgSessionMs / 60000)} m` }
-        ].map((stat, i) => (
-          <Card key={i} className="text-center p-4">
-            <p className="text-xs text-bunny-muted uppercase tracking-wider mb-1">{stat.label}</p>
-            <p className="text-2xl font-bold font-rounded text-bunny-text">{stat.val}</p>
-          </Card>
-        ))}
+    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in pb-10">
+      <div className="flex items-center gap-3">
+        <BarChartIcon className="w-8 h-8 text-bunny-primary" />
+        <h1 className="text-3xl font-rounded font-bold">Statistics</h1>
       </div>
 
-      {!hasData ? (
-        <Card><EmptyState title="No stats yet" message="Complete your first study session to see your trends!" /></Card>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <h3 className="font-bold font-rounded text-xl mb-8">Study Trend (Last 7 Days)</h3>
-            <div className="flex items-end justify-between h-48 pt-4 border-b border-bunny-border pb-2 px-2">
-              {stats.last7Days.map((day, i) => {
-                const heightPercent = Math.min(100, Math.max(5, (day.ms / (4 * 3600000)) * 100)); // normalized to 4hr max
-                const dateObj = new Date(day.date + 'T00:00:00'); // Force local interpretation
-                const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-                return (
-                  <div key={i} className="flex flex-col items-center w-full group">
-                    <div 
-                      className="w-8 md:w-12 bg-bunny-blush rounded-t-lg group-hover:bg-bunny-rose transition-colors relative"
-                      style={{ height: `${heightPercent}%` }}
-                    >
-                      <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                        {formatHrs(day.ms)}h
-                      </span>
-                    </div>
-                    <span className="text-xs text-bunny-muted mt-2">{dayName}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="flex flex-col items-center justify-center text-center py-6">
+          <Clock className="w-6 h-6 text-bunny-primary mb-2 opacity-80" />
+          <span className="text-3xl font-bold font-rounded text-bunny-text">
+            {/* 🚀 TOTAL TIME ADAPTIVE FORMAT */}
+            {formatDuration(stats.totalMs, { compact: true })}
+          </span>
+          <span className="text-xs font-bold text-bunny-muted uppercase tracking-wider mt-1">Total Focus</span>
+        </Card>
+        
+        <Card className="flex flex-col items-center justify-center text-center py-6">
+          <CheckCircle className="w-6 h-6 text-green-500 mb-2 opacity-80" />
+          <span className="text-3xl font-bold font-rounded text-bunny-text">{stats.completedCount}</span>
+          <span className="text-xs font-bold text-bunny-muted uppercase tracking-wider mt-1">Sessions Completed</span>
+        </Card>
 
-          <Card className="max-h-[350px] overflow-y-auto">
-             <h3 className="font-bold font-rounded text-xl mb-4">Session History</h3>
-             <div className="space-y-3">
-               {sessions.slice(0, 10).map(s => (
-                 <div key={s.id} className="flex justify-between items-center p-3 bg-bunny-cream rounded-xl">
-                   <div>
-                     <p className="font-bold text-sm">{s.title}</p>
-                     <p className="text-xs text-bunny-muted">{s.date} • {s.subject}</p>
-                   </div>
-                   <span className="text-sm font-bold text-bunny-rose">{Math.round(s.actualDurationMs / 60000)}m</span>
-                 </div>
-               ))}
-             </div>
-          </Card>
+        <Card className="flex flex-col items-center justify-center text-center py-6">
+          <TrendingUp className="w-6 h-6 text-orange-500 mb-2 opacity-80" />
+          <span className="text-3xl font-bold font-rounded text-bunny-text">{stats.streak}</span>
+          <span className="text-xs font-bold text-bunny-muted uppercase tracking-wider mt-1">Day Streak</span>
+        </Card>
+
+        <Card className="flex flex-col items-center justify-center text-center py-6">
+          <BarChartIcon className="w-6 h-6 text-bunny-primary mb-2 opacity-80" />
+          <span className="text-3xl font-bold font-rounded text-bunny-text">
+            {/* 🚀 AVERAGE TIME ADAPTIVE FORMAT */}
+            {formatDuration(stats.avgSessionMs, { compact: true })}
+          </span>
+          <span className="text-xs font-bold text-bunny-muted uppercase tracking-wider mt-1">Avg Session</span>
+        </Card>
+      </div>
+
+      <Card className="bg-bunny-card border-bunny-border">
+        <h2 className="text-xl font-bold mb-6 font-rounded">Recent Study History</h2>
+        <div className="space-y-3">
+          {history.length === 0 ? (
+            <p className="text-center text-bunny-muted py-8 text-sm font-bold">No sessions recorded yet.</p>
+          ) : (
+            history.map((session) => (
+              <div key={session.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-bunny-cream/50 rounded-2xl hover:bg-bunny-cream transition-colors border border-bunny-border/50 gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-bold text-bunny-text text-sm">{session.title}</h3>
+                    {session.completed && (
+                      <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-sm font-bold uppercase tracking-wider">Completed</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-bunny-primary uppercase tracking-wider">{session.subject}</span>
+                    <span className="w-1 h-1 rounded-full bg-bunny-border"></span>
+                    <span className="text-xs font-medium text-bunny-muted">
+                      {new Date(session.timestamp).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col sm:items-end bg-white/50 px-4 py-2 rounded-xl border border-bunny-border/30">
+                  {/* 🚀 ACTUAL STUDY TIME */}
+                  <span className="font-bold text-bunny-text text-sm">
+                    Focus: {formatDuration(session.actualDurationMs, { compact: true })}
+                  </span>
+                  {/* 🚀 PAUSE/REST TIME */}
+                  {session.pauseDurationMs > 0 && (
+                    <span className="text-xs font-bold text-bunny-muted mt-0.5">
+                      Rest: {formatDuration(session.pauseDurationMs, { compact: true })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
-      )}
+      </Card>
     </div>
   );
 };
