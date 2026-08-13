@@ -24,7 +24,6 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
     >
       <svg viewBox="0 0 100 100" fill="none" className="w-full h-full overflow-visible">
         
-        {/* Soft 2.5D Shading Gradients */}
         <defs>
           <linearGradient id="furGradient" x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stopColor="#EAEAEA" />
@@ -39,28 +38,18 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
         {/* Tail */}
         <circle cx="20" cy="75" r="8" fill="url(#furGradient)" />
         
-        {/* Back Leg (Darker for depth) */}
-        <motion.ellipse 
-          cx="30" 
-          cy="85" 
-          rx="8" 
-          ry="4" 
-          fill="url(#backLegGradient)"
-          animate={isHopping ? { rotate: [0, -20, 0], cy: [85, 80, 85] } : { rotate: 0, cy: 85 }}
+        {/* Back Leg - Using 'y' transform instead of 'cy' to fix Framer Motion error */}
+        <motion.ellipse cx="30" cy="85" rx="8" ry="4" fill="url(#backLegGradient)"
+          animate={isHopping ? { rotate: [0, -20, 0], y: [0, -5, 0] } : { rotate: 0, y: 0 }}
           transition={{ duration: 0.6, repeat: Infinity }}
         />
 
         {/* Main Body */}
         <ellipse cx="50" cy="65" rx="30" ry="25" fill="url(#furGradient)" />
         
-        {/* Front Leg */}
-        <motion.ellipse 
-          cx="65" 
-          cy="85" 
-          rx="6" 
-          ry="4" 
-          fill="url(#furGradient)"
-          animate={isHopping ? { rotate: [0, 20, 0], cy: [85, 75, 85] } : { rotate: 0, cy: 85 }}
+        {/* Front Leg - Using 'y' transform instead of 'cy' */}
+        <motion.ellipse cx="65" cy="85" rx="6" ry="4" fill="url(#furGradient)"
+          animate={isHopping ? { rotate: [0, 20, 0], y: [0, -10, 0] } : { rotate: 0, y: 0 }}
           transition={{ duration: 0.6, repeat: Infinity }}
         />
 
@@ -76,7 +65,7 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
         >
           {/* Ears */}
           <motion.g
-            animate={isSleepy ? { rotate: -40, y: 10 } : isHopping ? { rotate: [-10, 10, -10] } : {}}
+            animate={isSleepy ? { rotate: -40, y: 10 } : isHopping ? { rotate: [-10, 10, -10] } : { rotate: 0, y: 0 }}
             transition={{ duration: 0.6, repeat: Infinity }}
             style={{ originX: '70px', originY: '30px' }}
           >
@@ -89,7 +78,7 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
           {/* Head Base */}
           <ellipse cx="75" cy="50" rx="20" ry="18" fill="url(#furGradient)" />
           
-          {/* Facial Features (Readable dark tones) */}
+          {/* Facial Features */}
           {isSleepy || isHappy ? (
             <>
               <path d="M 68 48 Q 71 52 74 48" stroke="#4A3F3F" strokeWidth="2" strokeLinecap="round" fill="none" />
