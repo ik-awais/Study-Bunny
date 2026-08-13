@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 
 interface ArticulatedBunnyProps {
-  mood: 'idle' | 'hopping' | 'sleepy' | 'happy';
+  mood: 'idle' | 'hopping' | 'sleepy' | 'happy' | 'studying' | 'relaxing';
   direction?: 1 | -1;
   className?: string;
 }
@@ -9,7 +9,8 @@ interface ArticulatedBunnyProps {
 export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: ArticulatedBunnyProps) => {
   const isHopping = mood === 'hopping';
   const isHappy = mood === 'happy';
-  const isSleepy = mood === 'sleepy';
+  const isRelaxing = mood === 'relaxing' || mood === 'sleepy';
+  const isStudying = mood === 'studying';
 
   return (
     <motion.div 
@@ -18,6 +19,7 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
       animate={
         isHopping ? { y: [0, -15, 0], x: [0, 10, 20] } :
         isHappy ? { y: [0, -10, 0] } : 
+        isRelaxing ? { y: 15, scaleY: 0.85 } : // Squish down for resting
         { y: 0 }
       }
       transition={{ duration: isHopping ? 0.6 : isHappy ? 0.4 : 2, repeat: isHopping || isHappy ? Infinity : 0, ease: "easeInOut" }}
@@ -38,18 +40,20 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
         {/* Tail */}
         <circle cx="20" cy="75" r="8" fill="url(#furGradient)" />
         
-        {/* Back Leg - Using 'y' transform instead of 'cy' to fix Framer Motion error */}
+        {/* Back Leg */}
         <motion.ellipse cx="30" cy="85" rx="8" ry="4" fill="url(#backLegGradient)"
-          animate={isHopping ? { rotate: [0, -20, 0], y: [0, -5, 0] } : { rotate: 0, y: 0 }}
+          animate={isHopping ? { rotate: [0, -20, 0], y: [0, -5, 0] } : isRelaxing ? { rotate: 20, y: -5, x: -5 } : { rotate: 0, y: 0 }}
           transition={{ duration: 0.6, repeat: Infinity }}
         />
 
         {/* Main Body */}
-        <ellipse cx="50" cy="65" rx="30" ry="25" fill="url(#furGradient)" />
+        <motion.ellipse cx="50" cy="65" rx="30" ry="25" fill="url(#furGradient)" 
+          animate={isStudying ? { rotate: -5 } : isRelaxing ? { rx: 35, ry: 20 } : {}} 
+        />
         
-        {/* Front Leg - Using 'y' transform instead of 'cy' */}
+        {/* Front Leg */}
         <motion.ellipse cx="65" cy="85" rx="6" ry="4" fill="url(#furGradient)"
-          animate={isHopping ? { rotate: [0, 20, 0], y: [0, -10, 0] } : { rotate: 0, y: 0 }}
+          animate={isHopping ? { rotate: [0, 20, 0], y: [0, -10, 0] } : isRelaxing ? { x: 10, y: -5 } : { rotate: 0, y: 0 }}
           transition={{ duration: 0.6, repeat: Infinity }}
         />
 
@@ -57,16 +61,18 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
         <motion.g
           animate={
             isHopping ? { y: [0, -5, 0], rotate: [0, 5, 0] } :
-            isSleepy ? { y: 5, rotate: -5 } : 
-            isHappy ? { rotate: [0, -10, 10, 0] } : { rotate: [0, 2, -2, 0] }
+            isRelaxing ? { y: 15, x: 5, rotate: -15 } : 
+            isHappy ? { rotate: [0, -10, 10, 0] } : 
+            isStudying ? { rotate: [0, 2, 0], y: [0, -2, 0] } : // Attentive bob
+            { rotate: [0, 2, -2, 0] }
           }
-          transition={{ duration: isHopping ? 0.6 : 3, repeat: Infinity }}
+          transition={{ duration: isHopping ? 0.6 : isStudying ? 4 : 3, repeat: Infinity }}
           style={{ originX: '70px', originY: '50px' }}
         >
           {/* Ears */}
           <motion.g
-            animate={isSleepy ? { rotate: -40, y: 10 } : isHopping ? { rotate: [-10, 10, -10] } : { rotate: 0, y: 0 }}
-            transition={{ duration: 0.6, repeat: Infinity }}
+            animate={isRelaxing ? { rotate: -60, y: 10, x: -10 } : isHopping ? { rotate: [-10, 10, -10] } : isStudying ? { rotate: [0, 5, 0] } : { rotate: 0, y: 0 }}
+            transition={{ duration: isStudying ? 4 : 0.6, repeat: Infinity }}
             style={{ originX: '70px', originY: '30px' }}
           >
             <ellipse cx="65" cy="25" rx="6" ry="22" transform="rotate(-15 65 25)" fill="url(#backLegGradient)" />
@@ -79,7 +85,7 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
           <ellipse cx="75" cy="50" rx="20" ry="18" fill="url(#furGradient)" />
           
           {/* Facial Features */}
-          {isSleepy || isHappy ? (
+          {isRelaxing || isHappy ? (
             <>
               <path d="M 68 48 Q 71 52 74 48" stroke="#4A3F3F" strokeWidth="2" strokeLinecap="round" fill="none" />
               <path d="M 82 48 Q 85 52 88 48" stroke="#4A3F3F" strokeWidth="2" strokeLinecap="round" fill="none" />
@@ -96,7 +102,7 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
           <ellipse cx="86" cy="55" rx="4" ry="2" fill="#FFD6E0" opacity="0.8"/>
           <path d="M75 52 Q77 55 79 52" stroke="#FFB6C1" strokeWidth="2" strokeLinecap="round" fill="none" />
           
-          {isSleepy && <text x="85" y="35" fill="#5C4F4F" fontSize="12" fontWeight="bold">z</text>}
+          {isRelaxing && <text x="85" y="35" fill="#5C4F4F" fontSize="12" fontWeight="bold">z</text>}
         </motion.g>
       </svg>
     </motion.div>

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type BunnyState = 'IDLE' | 'ROAMING' | 'NOTICE_CURSOR' | 'APPROACH_CURSOR' | 'SNIFFING' | 'CARROT_TARGETED' | 'EATING' | 'CELEBRATING' | 'SLEEPING';
+export type BunnyState = 'IDLE' | 'ROAMING' | 'STUDYING' | 'RELAXING' | 'CELEBRATING' | 'NOTICE_CURSOR' | 'APPROACH_CURSOR' | 'SNIFFING' | 'CARROT_TARGETED' | 'EATING';
 
 export interface SpatialPoint { x: number; y: number; }
 
@@ -53,7 +53,6 @@ export const useBunnyEngine = create<BunnyEngineState>()((set) => ({
     };
   }),
 
-  // ADD THIS BLOCK:
   dropCarrot: (pos) => set((state) => {
     if (state.cursorState !== 'carrot') return state;
     return {
@@ -79,7 +78,7 @@ export const useBunnyEngine = create<BunnyEngineState>()((set) => ({
       let { pos, target, state: bState, direction, moodTimer, velocity } = bunny;
 
       // 1. Proximity Check (Investigate the cursor if nearby and not busy)
-      if (bState === 'IDLE' || bState === 'ROAMING') {
+      if (bState === 'IDLE' || bState === 'ROAMING' || bState === 'STUDYING' || bState === 'RELAXING') {
         const dx = engineCursorRef.x - pos.x;
         const dy = engineCursorRef.y - pos.y;
         if (Math.sqrt(dx*dx + dy*dy) < 8 && state.cursorState === 'normal') {
@@ -119,6 +118,21 @@ export const useBunnyEngine = create<BunnyEngineState>()((set) => ({
           if (moodTimer === 0) {
             bState = 'CELEBRATING';
             moodTimer = 30;
+          }
+          break;
+          
+        case 'STUDYING':
+          // Bunnies in studying state are focused and less reactive
+          if (moodTimer === 0 && Math.random() > 0.99) {
+            bState = 'RELAXING';
+            moodTimer = 60;
+          }
+          break;
+          
+        case 'RELAXING':
+          if (moodTimer === 0 && Math.random() > 0.97) {
+            bState = 'ROAMING';
+            target = { x: 5 + Math.random() * 90, y: 20 + Math.random() * 75 };
           }
           break;
       }

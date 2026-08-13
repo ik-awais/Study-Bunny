@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { useBunnyEngine, engineCursorRef } from '../../store/useBunnyEngine';
 import { useTimerStore } from '../../store/useTimerStore';
+import { useVoiceCommand } from '../../hooks/useVoiceCommand';
 import { ArticulatedBunny } from './ArticulatedBunny';
 
 export const BunnyWorld = () => {
   const { bunnies, tick, spawnBunny, cursorState, triggerCarrotMode, dropCarrot, setAllStates } = useBunnyEngine();
   const { status } = useTimerStore();
+  const { isAwake } = useVoiceCommand();
   const customCursorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -17,10 +19,25 @@ export const BunnyWorld = () => {
     return () => clearInterval(interval);
   }, [bunnies.length, spawnBunny, tick]);
 
+  // Timer state sync - bunnies react to timer status
   useEffect(() => {
-    if (status === 'paused') setAllStates('SLEEPING');
-    else if (status === 'running') setAllStates('IDLE'); 
-  }, [status, setAllStates]);
+    // If voice is awake, bunnies are attentive regardless of timer
+    if (isAwake) {
+      setAllStates('STUDYING');
+      return;
+    }
+
+    // Otherwise, follow timer states
+    if (status === 'running') {
+      setAllStates('STUDYING');
+    } else if (status === 'paused') {
+      setAllStates('RELAXING');
+    } else if (status === 'completed') {
+      setAllStates('CELEBRATING');
+    } else {
+      setAllStates('IDLE');
+    }
+  }, [status, setAllStates, isAwake]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -56,11 +73,12 @@ export const BunnyWorld = () => {
 
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         {bunnies.map((bunny) => {
-          let mood: 'idle' | 'hopping' | 'sleepy' | 'happy' = 'idle';
+          let mood: 'idle' | 'hopping' | 'sleepy' | 'happy' | 'studying' | 'relaxing' = 'idle';
           if (['ROAMING', 'APPROACH_CURSOR', 'CARROT_TARGETED'].includes(bunny.state)) mood = 'hopping';
           if (['CELEBRATING', 'EATING'].includes(bunny.state)) mood = 'happy';
-          if (bunny.state === 'SLEEPING') mood = 'sleepy';
-
+          if (bunny.state === 'RELAXING') mood = 'relaxing';
+          if (bunny.state === 'STUDYING') mood = 'studying';
+          
           const depthScale = bunny.baseScale * (0.5 + (bunny.pos.y / 100) * 0.7);
           const depthZIndex = Math.round(bunny.pos.y * 10);
 

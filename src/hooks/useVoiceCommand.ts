@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTimerStore } from '../store/useTimerStore';
 import { useToastStore } from '../store/useToastStore';
 
@@ -11,9 +11,12 @@ export const useVoiceCommand = () => {
   const [isListening, setIsListening] = useState(false); 
   const [isAwake, setIsAwake] = useState(false);         
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  
+  // Debug State
+  const [lastTranscript, setLastTranscript] = useState('');
 
   const recognitionRef = useRef<any>(null);
-  const listeningIntentRef = useRef(false); // Tracks if the mic SHOULD be on
+  const listeningIntentRef = useRef(false);
 
   const { start, stop, pause, resume, setMode } = useTimerStore();
   const { addToast } = useToastStore();
@@ -22,8 +25,8 @@ export const useVoiceCommand = () => {
     if (text.includes('half an hour')) return 30;
     if (text.includes('an hour')) return 60;
     
-    const numMap: Record<string, number> = { 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'ten': 10, 'fifteen': 15, 'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60, 'ninety': 90 };
-    const regex = /(?:for\s+a\s+|for\s+|a\s+)?(\d+|one|two|three|four|five|ten|fifteen|twenty|thirty|forty|fifty|sixty|ninety)\s*(hour|hr|minute|min)/i;
+    const numMap: Record<string, number> = { 'one':1, 'two':2, 'three':3, 'four':4, 'five':5, 'ten':10, 'fifteen':15, 'twenty':20, 'thirty':30, 'forty':40, 'forty-five':45, 'fifty':50, 'sixty':60, 'ninety':90 };
+    const regex = /(?:for\s+a\s+|for\s+|a\s+)?(\d+|one|two|three|four|five|ten|fifteen|twenty|thirty|forty|forty-five|fifty|sixty|ninety)\s*(hour|hr|minute|min)s?/i;
     const match = text.match(regex);
     
     if (!match) return null;
@@ -32,38 +35,60 @@ export const useVoiceCommand = () => {
     return match[2].startsWith('h') ? val * 60 : val;
   };
 
-  const handleCommand = useCallback((transcript: string) => {
+  const processTranscript = useCallback((transcript: string) => {
     const text = transcript.toLowerCase().trim();
-    console.log("🎤 Voice Pipeline Recognized:", text);
+    setLastTranscript(text);
+    console.log("🎤 Final Transcript:", text);
 
-    // Wake Phrase Logic
-    if (text.includes('activate study bunny') || text.includes('wake up study bunny')) {
-      setIsAwake(true); addToast('Study Bunny is awake and listening!', 'success'); return;
+    // Wake / Sleep Commands
+    if (text.match(/activate study bunny|wake up study bunny/)) {
+      setIsAwake(true); addToast('Study Bunny is awake.', 'success'); return;
     }
-    if (text.includes('deactivate study bunny') || text.includes('go to sleep')) {
-      setIsAwake(false); addToast('Study Bunny is now resting.', 'info'); return;
+    if (text.match(/deactivate study bunny|go to sleep/)) {
+      setIsAwake(false); addToast('Study Bunny is resting.', 'info'); return;
     }
 
     if (!isAwake) return;
 
-    // Command Intent Parsing
+    // Intent Parsing
+    let intent: 'START' | 'PAUSE' | 'RESUME' | 'STOP' | 'RESET' | 'UNKNOWN' = 'UNKNOWN';
+    
+    if (text.match(/start|begin|let's study/)) intent = 'START';
+    else if (text.match(/pause|hold|take a break|need a break/)) intent = 'PAUSE';
+    else if (text.match(/resume|continue|ready again/)) intent = 'RESUME';
+    else if (text.match(/stop|end my session|done studying/)) intent = 'STOP';
+    else if (text.match(/reset|start over/)) intent = 'RESET';
+
     const duration = parseDuration(text);
-    if (text.includes('start') || text.includes('begin')) {
-      if (duration) {
-        setMode('countdown'); start(duration); addToast(`Started a ${duration} minute session`, 'success');
-      } else {
-        start(); addToast('Timer started', 'success');
-      }
-    } else if (text.includes('stop') || text.includes('end my session')) {
-      stop(false); addToast('Timer stopped', 'info');
-    } else if (text.includes('pause') || text.includes('hold')) {
-      pause(); addToast('Timer paused. Rest time is tracking.', 'info');
-    } else if (text.includes('resume') || text.includes('continue')) {
-      resume(); addToast('Timer resumed', 'info');
-    } else if (text.includes('reset')) {
-      stop(false); addToast('Timer reset', 'info');
-    } else {
-      console.log("AI Fallback Abstraction reached for:", text);
+
+    // Execution & Validation Pipeline
+    switch (intent) {
+      case 'START':
+        if (duration) {
+          setMode('countdown'); start(duration); 
+          addToast(`Starting a ${duration}-minute session.`, 'success');
+        } else {
+          start(); 
+          addToast('Starting timer.', 'success');
+        }
+        break;
+      case 'PAUSE':
+        pause(); addToast('Timer paused. Rest time is tracking.', 'info');
+        break;
+      case 'RESUME':
+        resume(); addToast('Resuming your session.', 'info');
+        break;
+      case 'STOP':
+        stop(false); addToast('Study session completed.', 'info');
+        break;
+      case 'RESET':
+        stop(false); addToast('Timer reset.', 'info');
+        break;
+      default:
+        // AI Fallback Architecture (Stubbed as requested)
+        console.log("Passed to Optional AI Fallback:", text);
+        addToast("I didn't understand that.", 'error');
+        break;
     }
   }, [isAwake, start, stop, pause, resume, setMode, addToast]);
 
@@ -75,7 +100,6 @@ export const useVoiceCommand = () => {
       setIsListening(false);
       setIsAwake(false);
       recognitionRef.current?.stop();
-      addToast('Voice engine deactivated.', 'info');
       return;
     }
 
@@ -92,12 +116,16 @@ export const useVoiceCommand = () => {
       setIsListening(true);
       setIsAwake(true);
       setHasPermission(true);
-      addToast('Voice engine activated! Try saying "Start a 45 minute timer".', 'success');
+      addToast('Voice engine active! Say "Start a 45 minute timer".', 'success');
     };
     
     recognition.onresult = (event: any) => {
-      const transcript = event.results[event.results.length - 1][0].transcript;
-      handleCommand(transcript);
+      // 🚀 CRITICAL FIX: Only process final results to prevent duplicate triggers
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          processTranscript(event.results[i][0].transcript);
+        }
+      }
     };
 
     recognition.onerror = (e: any) => {
@@ -108,30 +136,19 @@ export const useVoiceCommand = () => {
       }
     };
 
-    // 🚀 THE FIX: Aggressively restart the loop if the browser kills it on silence,
-    // AS LONG AS the user hasn't explicitly turned it off.
+    // 🚀 CRITICAL FIX: Controlled backoff-restart logic
     recognition.onend = () => {
       if (listeningIntentRef.current) {
-        try { recognition.start(); } catch(e) { console.error("Mic restart failed"); }
+        setTimeout(() => {
+          try { recognition.start(); } catch(e) { console.error("Mic restart failed"); }
+        }, 250);
       } else {
         setIsListening(false);
       }
     };
 
     try { recognition.start(); } catch (e) { listeningIntentRef.current = false; }
-  }, [isSupported, handleCommand, addToast]);
+  }, [isSupported, processTranscript, addToast]);
 
-  // Global Keyboard Shortcut: Ctrl + Shift + B
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'b') {
-        e.preventDefault();
-        toggleListening();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleListening]);
-
-  return { isSupported, isListening, isAwake, hasPermission, toggleListening };
+  return { isSupported, isListening, isAwake, hasPermission, lastTranscript, toggleListening };
 };
