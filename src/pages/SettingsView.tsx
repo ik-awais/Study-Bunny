@@ -5,7 +5,12 @@ import { useVoiceCommand } from '../hooks/useVoiceCommand';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 export const SettingsView = () => {
-  const { isSupported, isListening, toggleListening, hasPermission } = useVoiceCommand();
+  const { status: voiceStatus, toggleVoice } = useVoiceCommand();
+  
+  const isSupported = voiceStatus !== 'unsupported';
+  const isListening = voiceStatus === 'listening';
+  const hasPermission = voiceStatus !== 'denied';
+  const toggleListening = () => toggleVoice();
   const { settings, updateSetting, requestNotificationPermission, exportData, importData } = useSettingsStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 

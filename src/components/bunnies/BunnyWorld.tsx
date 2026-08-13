@@ -6,8 +6,9 @@ import { ArticulatedBunny } from './ArticulatedBunny';
 
 export const BunnyWorld = () => {
   const { bunnies, tick, spawnBunny, cursorState, triggerCarrotMode, dropCarrot, setAllStates } = useBunnyEngine();
-  const { status } = useTimerStore();
-  const { isAwake } = useVoiceCommand();
+  const {  } = useTimerStore();
+  const { status: voiceStatus } = useVoiceCommand();
+  const isAwake = voiceStatus === 'listening';
   const customCursorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

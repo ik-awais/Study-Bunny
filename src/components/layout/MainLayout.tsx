@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Home, Clock, Calendar, BarChart, Settings, Menu, Target, Mic, MicOff } from 'lucide-react';
+import { Home, Clock, Calendar, BarChart, Settings, Menu, Target, Mic, MicOff, AlertCircle } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { BunnyWorld } from '../bunnies/BunnyWorld';
 import { ToastProvider } from '../ui/ToastProvider';
@@ -17,12 +17,17 @@ const NAV_ITEMS = [
 export const MainLayout = () => {
   const { isSidebarOpen, toggleSidebar } = useAppStore();
   const location = useLocation();
-  const { isSupported, isListening, toggleListening, isAwake } = useVoiceCommand();
+  const { status, debug, toggleVoice } = useVoiceCommand();
+
+  const getMicColor = () => {
+    if (status === 'listening') return 'bg-bunny-primary text-white animate-pulse shadow-lg shadow-bunny-primary/30';
+    if (status === 'denied' || status === 'error') return 'bg-bunny-error text-white';
+    return 'bg-white text-bunny-muted hover:text-bunny-primary border border-bunny-border';
+  };
 
   return (
     <div className="flex h-screen w-full bg-bunny-cream text-bunny-text relative overflow-hidden">
       
-      {/* 3D-Ready Interactive Environment */}
       <BunnyWorld />
       <ToastProvider />
       
@@ -34,9 +39,9 @@ export const MainLayout = () => {
           </button>
           <h1 className="ml-4 font-rounded font-bold text-xl text-bunny-primary">Study Bunny</h1>
         </div>
-        {isSupported && (
-          <button onClick={toggleListening} className={`p-2 rounded-full transition-colors ${isListening ? 'bg-bunny-primary text-white animate-pulse' : 'bg-bunny-cream text-bunny-muted'}`}>
-            {isListening ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+        {status !== 'unsupported' && (
+          <button onClick={() => toggleVoice()} className={`p-2 rounded-full transition-all ${getMicColor()}`}>
+            {status === 'listening' ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
           </button>
         )}
       </div>
@@ -64,26 +69,50 @@ export const MainLayout = () => {
             })}
           </nav>
           
-          {isSupported && (
-            <div className="hidden md:flex items-center justify-between mt-auto p-4 bg-bunny-cream rounded-2xl border border-bunny-border">
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-bunny-muted">Voice Engine</span>
-                <span className="text-[10px] uppercase text-bunny-primary tracking-widest">{isListening ? (isAwake ? 'Awake' : 'Listening...') : 'Off'}</span>
-              </div>
-              <button onClick={toggleListening} className={`p-2 rounded-full transition-colors shadow-sm ${isAwake ? 'bg-bunny-primary text-white animate-pulse' : isListening ? 'bg-bunny-rose text-white' : 'bg-white text-bunny-muted'}`}>
-                {isListening ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-              </button>
-            </div>
+          {status !== 'unsupported' && (
+             <div className="hidden md:flex flex-col mt-auto p-4 bg-bunny-cream rounded-2xl border border-bunny-border space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-bunny-muted">Voice Engine</span>
+                    <span className={`text-[10px] uppercase tracking-widest font-bold ${status === 'listening' ? 'text-bunny-primary' : status === 'denied' ? 'text-bunny-error' : 'text-bunny-muted'}`}>
+                      {status}
+                    </span>
+                  </div>
+                  <button onClick={() => toggleVoice()} className={`p-3 rounded-full transition-all ${getMicColor()}`} title="Ctrl+Shift+P to toggle">
+                    {status === 'listening' ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+                  </button>
+                </div>
+                {status === 'denied' && (
+                  <div className="text-[10px] font-bold text-bunny-error flex gap-1 items-start bg-bunny-error/10 p-2 rounded-lg">
+                    <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                    <span>Please allow microphone access in your browser URL bar.</span>
+                  </div>
+                )}
+             </div>
           )}
         </div>
       </aside>
 
-      {/* Main Content Viewport (z-10) - Now handles native scrolling perfectly */}
       <main className="flex-1 h-screen overflow-y-auto relative z-10 scroll-smooth">
         <div className="max-w-6xl mx-auto p-6 md:p-10 min-h-full flex flex-col">
           <Outlet />
         </div>
       </main>
+
+      {/* --- DEVELOPER VOICE DEBUGGER --- */}
+      <div className="fixed bottom-4 right-4 z-[9999] bg-black/80 backdrop-blur-md text-green-400 font-mono text-[10px] p-3 rounded-lg shadow-2xl border border-white/10 w-64 pointer-events-none">
+        <div className="flex justify-between text-white font-bold mb-2 uppercase text-[9px] opacity-50 border-b border-white/20 pb-1">
+          <span>Voice Debugger</span>
+          <span className={status === 'listening' ? 'text-green-400' : 'text-red-400'}>{status}</span>
+        </div>
+        <div className="space-y-1">
+          <p><span className="opacity-50">Transcript:</span> {debug.transcript || '...'}</p>
+          <p><span className="opacity-50">Intent:</span> {debug.intent}</p>
+          <p><span className="opacity-50">Duration:</span> {debug.duration ? `${debug.duration}m` : 'None'}</p>
+          <p className="text-yellow-300 font-bold mt-1 pt-1 border-t border-white/20"><span className="opacity-70 font-normal">Action:</span> {debug.action}</p>
+        </div>
+      </div>
+
     </div>
   );
 };
