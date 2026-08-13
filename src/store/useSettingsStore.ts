@@ -94,7 +94,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       for (const p of parsed.data.planner) tx.objectStore('planner').put(p);
       if (parsed.settings) tx.objectStore('settings').put(parsed.settings, 'app-settings');
       
-      await tx.done;
+      // Native IndexedDB transaction completion
+      await new Promise(resolve => tx.oncomplete = resolve);
+      
       await useDataStore.getState().refreshAll();
       await get().loadSettings();
       useToastStore.getState().addToast('Data imported successfully!', 'success');

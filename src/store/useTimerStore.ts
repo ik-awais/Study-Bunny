@@ -176,6 +176,7 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
       
       if (timeSpent > 60000) { // Only record if > 1 minute
         await recordSession({
+          id: Date.now().toString(), // <-- Added this line
           title: state.context?.title || 'Study Session',
           subject: state.context?.subject || 'General Focus',
           durationMinutes: Math.round(state.targetDurationMs / 60000),
@@ -196,7 +197,7 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
           const plannerItems = useDataStore.getState().planner;
           const target = plannerItems.find(p => p.id === state.context!.plannerId);
           if (target) {
-            await updatePlannerItem({ ...target, completed: true });
+            await updatePlannerItem(target.id, { completed: true });
           }
         }
         await useDataStore.getState().refreshAll();
