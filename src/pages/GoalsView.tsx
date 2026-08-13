@@ -10,7 +10,13 @@ export const GoalsView = () => {
 
   const handleSave = () => {
     if (!form.title) return;
-    createGoal({ title: form.title, type: form.type as 'daily' | 'weekly', targetMs: form.hours * 60 * 60 * 1000 });
+    createGoal({ 
+      title: form.title, 
+      type: form.type as 'daily' | 'weekly' | 'monthly' | 'custom', 
+      targetMs: form.hours * 60 * 60 * 1000,
+      status: 'active',
+      priority: 'medium'
+    });
     setIsAdding(false);
     setForm({ title: '', type: 'daily', hours: 3 });
   };
