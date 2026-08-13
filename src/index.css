@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  /* Accessible Contrast Tokens */
+  --color-bunny-cream: #FFFDF9;         /* Lighter base for contrast */
+  --color-bunny-card: #FFFFFF;           /* Elevated surface */
+  
+  --color-bunny-primary: #D84C72;        /* Accessible primary button (passes AA with white text) */
+  --color-bunny-primary-hover: #C03E61;
+  
+  --color-bunny-blush: #FFE4EC;          /* Soft background accents */
+  --color-bunny-rose: #FF9EAF;           /* Decorative mid-tones */
+  
+  --color-bunny-text: #2D2424;           /* Primary text (Darker, strong readability) */
+  --color-bunny-muted: #5C4F4F;          /* Secondary text (Passes AA against cream/white) */
+  
+  --color-bunny-border: #E8DDDB;         /* Dividers */
+  --color-bunny-focus: #D84C72;          /* Focus rings */
+  
+  /* Status */
+  --color-bunny-success: #229954;
+  --color-bunny-warning: #D68910;
+  --color-bunny-error: #CB4335;
+
+  /* Fonts */
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-rounded: "Quicksand", system-ui, sans-serif;
+
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 2rem;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bunny-cream);
+    color: var(--color-bunny-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* Universal Focus Accessibility */
+  *:focus-visible {
+    outline: 2px solid var(--color-bunny-focus);
+    outline-offset: 2px;
+  }
+}
