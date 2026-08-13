@@ -17,7 +17,7 @@ const NAV_ITEMS = [
 export const MainLayout = () => {
   const { isSidebarOpen, toggleSidebar } = useAppStore();
   const location = useLocation();
-  const { isSupported, isListening, toggleListening } = useVoiceCommand();
+  const { isSupported, isListening, toggleListening, isAwake } = useVoiceCommand();
 
   return (
     <div className="flex h-screen w-full bg-bunny-cream text-bunny-text relative overflow-hidden">
@@ -65,12 +65,15 @@ export const MainLayout = () => {
           </nav>
           
           {isSupported && (
-             <div className="hidden md:flex items-center justify-between mt-auto p-4 bg-bunny-cream rounded-2xl border border-bunny-border">
-                <span className="text-sm font-bold text-bunny-muted">Voice</span>
-                <button onClick={toggleListening} className={`p-2 rounded-full transition-colors shadow-sm ${isListening ? 'bg-bunny-primary text-white animate-pulse' : 'bg-white text-bunny-muted hover:text-bunny-primary'}`} title="Click to speak a command">
-                  {isListening ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-                </button>
-             </div>
+            <div className="hidden md:flex items-center justify-between mt-auto p-4 bg-bunny-cream rounded-2xl border border-bunny-border">
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-bunny-muted">Voice Engine</span>
+                <span className="text-[10px] uppercase text-bunny-primary tracking-widest">{isListening ? (isAwake ? 'Awake' : 'Listening...') : 'Off'}</span>
+              </div>
+              <button onClick={toggleListening} className={`p-2 rounded-full transition-colors shadow-sm ${isAwake ? 'bg-bunny-primary text-white animate-pulse' : isListening ? 'bg-bunny-rose text-white' : 'bg-white text-bunny-muted'}`}>
+                {isListening ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+              </button>
+            </div>
           )}
         </div>
       </aside>

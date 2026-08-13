@@ -25,6 +25,10 @@ interface TimerState {
   accumulatedMs: number;
   lastStartTime: number | null;
   
+  // Pause tracking
+  pauseAccumulatedMs: number;
+  pauseStartTime: number | null;
+  
   // Session context
   context: SessionContext | null;
   
@@ -51,12 +55,24 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
   expectedEndTime: null,
   accumulatedMs: 0,
   lastStartTime: null,
+  pauseAccumulatedMs: 0,
+  pauseStartTime: null,
   context: null,
 
   setMode: (mode) => {
     const targetMs = mode === 'pomodoro' ? 25 * 60 * 1000 : 15 * 60 * 1000;
-    set({ mode, status: 'idle', phase: 'focus', targetDurationMs: targetMs, remainingMs: targetMs, accumulatedMs: 0, context: null });
-    persistState({ status: 'idle', context: null });
+    set({ 
+      mode, 
+      status: 'idle', 
+      phase: 'focus', 
+      targetDurationMs: targetMs, 
+      remainingMs: targetMs, 
+      accumulatedMs: 0,
+      pauseAccumulatedMs: 0,
+      pauseStartTime: null,
+      context: null 
+    });
+    persistState({ status: 'idle', context: null, pauseAccumulatedMs: 0, pauseStartTime: null });
   },
 
   start: (durationMins, ctx) => {
@@ -72,6 +88,8 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
       expectedEndTime: expectedEnd,
       lastStartTime: now,
       accumulatedMs: 0,
+      pauseAccumulatedMs: 0,
+      pauseStartTime: null,
       context
     });
     
@@ -83,6 +101,8 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
       expectedEndTime: expectedEnd, 
       lastStartTime: now, 
       accumulatedMs: 0,
+      pauseAccumulatedMs: 0,
+      pauseStartTime: null,
       context
     });
   },
@@ -94,8 +114,19 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
     const now = Date.now();
     const newAccumulated = state.accumulatedMs + (now - (state.lastStartTime || now));
     
-    set({ status: 'paused', accumulatedMs: newAccumulated, expectedEndTime: null });
-    persistState({ status: 'paused', accumulatedMs: newAccumulated, expectedEndTime: null });
+    // Start tracking pause time
+    set({ 
+      status: 'paused', 
+      accumulatedMs: newAccumulated, 
+      expectedEndTime: null, 
+      pauseStartTime: now 
+    });
+    persistState({ 
+      status: 'paused', 
+      accumulatedMs: newAccumulated, 
+      expectedEndTime: null,
+      pauseStartTime: now
+    });
   },
 
   resume: () => {
@@ -103,11 +134,29 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
     if (state.status !== 'paused') return;
     
     const now = Date.now();
+    let newPauseAccumulated = state.pauseAccumulatedMs;
+    
+    if (state.pauseStartTime) {
+      newPauseAccumulated += (now - state.pauseStartTime);
+    }
+    
     const remaining = state.targetDurationMs - state.accumulatedMs;
     const expectedEnd = now + remaining;
     
-    set({ status: 'running', expectedEndTime: expectedEnd, lastStartTime: now });
-    persistState({ status: 'running', expectedEndTime: expectedEnd, lastStartTime: now });
+    set({ 
+      status: 'running', 
+      expectedEndTime: expectedEnd, 
+      lastStartTime: now, 
+      pauseAccumulatedMs: newPauseAccumulated, 
+      pauseStartTime: null 
+    });
+    persistState({ 
+      status: 'running', 
+      expectedEndTime: expectedEnd, 
+      lastStartTime: now,
+      pauseAccumulatedMs: newPauseAccumulated,
+      pauseStartTime: null
+    });
   },
 
   stop: async (completed = false) => {
@@ -116,9 +165,13 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
     if (state.status !== 'idle' && state.phase === 'focus') {
       const now = Date.now();
       let timeSpent = state.accumulatedMs;
+      let finalPauseMs = state.pauseAccumulatedMs;
       
       if (state.status === 'running' && state.lastStartTime) {
         timeSpent += (now - state.lastStartTime);
+      }
+      if (state.status === 'paused' && state.pauseStartTime) {
+        finalPauseMs += (now - state.pauseStartTime);
       }
       
       if (timeSpent > 60000) { // Only record if > 1 minute
@@ -127,10 +180,12 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
           subject: state.context?.subject || 'General Focus',
           durationMinutes: Math.round(state.targetDurationMs / 60000),
           actualDurationMs: Math.min(timeSpent, state.targetDurationMs),
+          pauseDurationMs: finalPauseMs, // 🚀 Saved to DB
           date: new Date().toLocaleDateString('en-CA'),
           timestamp: Date.now(),
           mode: state.mode,
-          completed: completed || (timeSpent >= state.targetDurationMs)
+          completed: completed || (timeSpent >= state.targetDurationMs),
+          plannerId: state.context?.plannerId
         });
         
         // Auto-complete planner task if linked
@@ -145,15 +200,44 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
       }
     }
 
+    // Reset timer state
+    const resetState = {
+      status: 'idle' as TimerStatus,
+      accumulatedMs: 0,
+      pauseAccumulatedMs: 0,
+      pauseStartTime: null,
+      context: null
+    };
+
     // If pomodoro completes, switch to break automatically. Otherwise, reset.
     if (completed && state.mode === 'pomodoro' && state.phase === 'focus') {
       const breakMs = 5 * 60 * 1000;
-      set({ status: 'idle', phase: 'break', targetDurationMs: breakMs, remainingMs: breakMs, accumulatedMs: 0, context: null });
-      persistState({ status: 'idle', context: null });
+      set({ 
+        ...resetState,
+        phase: 'break', 
+        targetDurationMs: breakMs, 
+        remainingMs: breakMs 
+      });
+      persistState({ 
+        status: 'idle', 
+        context: null,
+        pauseAccumulatedMs: 0,
+        pauseStartTime: null
+      });
     } else {
       const resetMs = state.mode === 'pomodoro' ? 25 * 60 * 1000 : 15 * 60 * 1000;
-      set({ status: 'idle', phase: 'focus', targetDurationMs: resetMs, remainingMs: resetMs, accumulatedMs: 0, context: null });
-      persistState({ status: 'idle', context: null });
+      set({ 
+        ...resetState,
+        phase: 'focus', 
+        targetDurationMs: resetMs, 
+        remainingMs: resetMs 
+      });
+      persistState({ 
+        status: 'idle', 
+        context: null,
+        pauseAccumulatedMs: 0,
+        pauseStartTime: null
+      });
     }
   },
 
@@ -188,7 +272,10 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
         set({ ...saved, remainingMs: saved.expectedEndTime - now });
       }
     } else if (saved.status === 'paused') {
-      set({ ...saved, remainingMs: saved.targetDurationMs - saved.accumulatedMs });
+      set({ 
+        ...saved, 
+        remainingMs: saved.targetDurationMs - saved.accumulatedMs 
+      });
     }
   }
 }));

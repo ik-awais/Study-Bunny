@@ -26,6 +26,7 @@ interface DataState {
   createPlanner: (p: Omit<PlannerRecord, 'id'>) => Promise<void>;
   togglePlanner: (id: string, completed: boolean) => Promise<void>;
   removePlanner: (id: string) => Promise<void>;
+  addPlannerItem: (item: any) => Promise<void>;
 }
 
 export const useDataStore = create<DataState>()((set, get) => ({
@@ -101,6 +102,23 @@ export const useDataStore = create<DataState>()((set, get) => ({
 
   createGoal: async (g) => { await addGoal(g); await get().refreshAll(); },
   removeGoal: async (id) => { await deleteGoal(id); await get().refreshAll(); },
+  
+  addPlannerItem: async (item) => {
+    const { initDB } = await import('../lib/db');
+    const db = await initDB();
+    const tx = db.transaction('planner', 'readwrite');
+    const newItem = { 
+      ...item, 
+      id: Date.now().toString(),
+      completed: item.completed || false 
+    };
+    tx.objectStore('planner').put(newItem);
+    await tx.done;
+    
+    // Refresh the UI state after saving
+    get().refreshAll();
+  },
+
   createPlanner: async (p) => { await addPlannerItem(p); await get().refreshAll(); },
   removePlanner: async (id) => { await deletePlannerItem(id); await get().refreshAll(); },
   togglePlanner: async (id, completed) => {
