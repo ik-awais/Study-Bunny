@@ -180,7 +180,10 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
           subject: state.context?.subject || 'General Focus',
           durationMinutes: Math.round(state.targetDurationMs / 60000),
           actualDurationMs: Math.min(timeSpent, state.targetDurationMs),
-          pauseDurationMs: finalPauseMs, // 🚀 Saved to DB
+          
+          // 🚀 THE FIX: This safely writes pause duration to the DB exactly as calculated!
+          pauseDurationMs: finalPauseMs || 0,
+          
           date: new Date().toLocaleDateString('en-CA'),
           timestamp: Date.now(),
           mode: state.mode,
