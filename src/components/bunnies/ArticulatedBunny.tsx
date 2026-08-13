@@ -40,8 +40,13 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
         <circle cx="20" cy="75" r="8" fill="url(#furGradient)" />
         
         {/* Back Leg (Darker for depth) */}
-        <motion.ellipse cx="30" cy="85" rx="8" ry="4" fill="url(#backLegGradient)"
-          animate={isHopping ? { rotate: [0, -20, 0], cy: [85, 80, 85] } : {}}
+        <motion.ellipse 
+          cx="30" 
+          cy="85" 
+          rx="8" 
+          ry="4" 
+          fill="url(#backLegGradient)"
+          animate={isHopping ? { rotate: [0, -20, 0], cy: [85, 80, 85] } : { rotate: 0, cy: 85 }}
           transition={{ duration: 0.6, repeat: Infinity }}
         />
 
@@ -49,8 +54,13 @@ export const ArticulatedBunny = ({ mood, direction = 1, className = '' }: Articu
         <ellipse cx="50" cy="65" rx="30" ry="25" fill="url(#furGradient)" />
         
         {/* Front Leg */}
-        <motion.ellipse cx="65" cy="85" rx="6" ry="4" fill="url(#furGradient)"
-          animate={isHopping ? { rotate: [0, 20, 0], cy: [85, 75, 85] } : {}}
+        <motion.ellipse 
+          cx="65" 
+          cy="85" 
+          rx="6" 
+          ry="4" 
+          fill="url(#furGradient)"
+          animate={isHopping ? { rotate: [0, 20, 0], cy: [85, 75, 85] } : { rotate: 0, cy: 85 }}
           transition={{ duration: 0.6, repeat: Infinity }}
         />
 
