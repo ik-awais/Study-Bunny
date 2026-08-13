@@ -24,6 +24,7 @@ interface BunnyEngineState {
   triggerCelebration: () => void;
   setAllStates: (state: BunnyState) => void;
   tick: () => void;
+  dropCarrot: (pos: SpatialPoint) => void;
 }
 
 // 🚀 PERFORMANCE: Non-reactive cursor ref.
@@ -49,6 +50,16 @@ export const useBunnyEngine = create<BunnyEngineState>()((set) => ({
     return {
       cursorState: 'carrot',
       bunnies: state.bunnies.map(b => b.id === bunnyId ? { ...b, state: 'CARROT_TARGETED', target: null } : b)
+    };
+  }),
+
+  // ADD THIS BLOCK:
+  dropCarrot: (pos) => set((state) => {
+    if (state.cursorState !== 'carrot') return state;
+    return {
+      cursorState: 'normal',
+      // Send the bunny to investigate where you dropped it, then go back to normal
+      bunnies: state.bunnies.map(b => b.state === 'CARROT_TARGETED' ? { ...b, state: 'ROAMING', target: pos } : b)
     };
   }),
 

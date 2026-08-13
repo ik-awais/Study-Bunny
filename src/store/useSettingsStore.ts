@@ -12,11 +12,19 @@ export interface AppSettings {
   pomodoroShortBreakMins: number;
   pomodoroLongBreakMins: number;
   notificationsEnabled: boolean;
+  spotifyEmbedUrl: string;
 }
 
 const defaultSettings: AppSettings = {
-  soundEnabled: true, ambientEnabled: true, reducedMotion: false, voiceEnabled: false,
-  pomodoroFocusMins: 25, pomodoroShortBreakMins: 5, pomodoroLongBreakMins: 15, notificationsEnabled: false
+  soundEnabled: true, 
+  ambientEnabled: true, 
+  reducedMotion: false, 
+  voiceEnabled: false,
+  pomodoroFocusMins: 25, 
+  pomodoroShortBreakMins: 5, 
+  pomodoroLongBreakMins: 15, 
+  notificationsEnabled: false,
+  spotifyEmbedUrl: ''
 };
 
 interface SettingsState {

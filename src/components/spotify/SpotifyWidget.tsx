@@ -1,80 +1,85 @@
-import { useEffect } from 'react';
-import { Music, ExternalLink, Settings } from 'lucide-react';
-import { Card, Button } from '../ui/SharedUI';
-import { useSpotifyStore } from '../../store/useSpotifyStore';
-import { initiateSpotifyLogin } from '../../lib/spotify';
+import { useState } from 'react';
+import { Music, Settings, X, ExternalLink } from 'lucide-react';
+import { Card, Button, Input } from '../ui/SharedUI';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 export const SpotifyWidget = () => {
-  const { accessToken, currentTrack, isPlaying, logout, fetchPlaybackState } = useSpotifyStore();
+  const { settings, updateSetting } = useSettingsStore();
+  const [inputUrl, setInputUrl] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
 
-  useEffect(() => {
-    if (!accessToken) return;
-    
-    // Fetch immediately, then every 10 seconds to stay in sync
-    fetchPlaybackState();
-    const interval = setInterval(fetchPlaybackState, 10000); 
-    
-    return () => clearInterval(interval);
-  }, [accessToken, fetchPlaybackState]);
+  const handleSave = () => {
+    try {
+      if (!inputUrl) return;
+      const url = new URL(inputUrl);
+      const path = url.pathname; // Extracts e.g. /playlist/37i9dQZF1DXcBWIGoYBM5M
+      
+      // Convert standard URL into Spotify's official iFrame Embed URL
+      const embedUrl = `https://open.spotify.com/embed${path}?utm_source=generator`;
+      updateSetting('spotifyEmbedUrl', embedUrl);
+      setIsEditing(false);
+      setInputUrl('');
+    } catch (e) {
+      console.error("Invalid URL");
+    }
+  };
 
-  if (!accessToken) {
+  if (!settings.spotifyEmbedUrl || isEditing) {
     return (
-      <Card className="flex flex-col items-center justify-center text-center space-y-4 h-full py-8">
-        <div className="w-16 h-16 bg-[#1DB954]/10 rounded-full flex items-center justify-center text-[#1DB954]">
-          <Music className="w-8 h-8" />
+      <Card className="flex flex-col items-center justify-center text-center space-y-4 h-[220px] bg-bunny-card border-bunny-border">
+        <div className="flex justify-between items-center w-full mb-1">
+          <div className="flex items-center gap-2 text-[#1DB954]">
+            <Music className="w-4 h-4" />
+            <span className="text-xs font-bold tracking-wider uppercase">Spotify</span>
+          </div>
+          {isEditing && settings.spotifyEmbedUrl && (
+             <button onClick={() => setIsEditing(false)} className="text-bunny-muted hover:text-bunny-primary transition-colors"><X className="w-4 h-4"/></button>
+          )}
         </div>
-        <div>
-          <h3 className="font-bold">Connect Spotify</h3>
-          <p className="text-xs text-bunny-muted mt-1">See what's playing while you study</p>
-        </div>
-        <Button onClick={initiateSpotifyLogin} className="bg-[#1DB954] hover:bg-[#1ed760] text-white border-none shadow-md">
-          Connect
+        
+        <p className="text-sm font-medium text-bunny-text">Add a Study Playlist</p>
+        <p className="text-xs text-bunny-muted mb-2">Paste a Spotify Playlist or Album link</p>
+        
+        <Input 
+          placeholder="https://open.spotify.com/..." 
+          value={inputUrl} 
+          onChange={e => setInputUrl(e.target.value)}
+          className="text-xs py-2"
+        />
+        <Button onClick={handleSave} className="w-full bg-[#1DB954] hover:bg-[#1ed760] text-white border-none shadow-sm text-sm py-2">
+          Save Embed
         </Button>
       </Card>
     );
   }
 
   return (
-    <Card className="flex flex-col justify-between h-full group bg-gradient-to-br from-bunny-card to-bunny-cream">
-      <div className="flex justify-between items-start mb-4">
+    <Card className="flex flex-col h-[220px] bg-bunny-card p-0 overflow-hidden border-bunny-border">
+      <div className="flex justify-between items-center p-3 border-b border-bunny-border/50 bg-bunny-cream/30">
         <div className="flex items-center gap-2 text-[#1DB954]">
           <Music className="w-4 h-4" />
-          <span className="text-xs font-bold tracking-wider uppercase">Spotify Connected</span>
+          <span className="text-xs font-bold tracking-wider uppercase">Player</span>
         </div>
-        <button onClick={logout} className="text-bunny-muted hover:text-bunny-error transition-colors" title="Disconnect">
-          <Settings className="w-4 h-4" />
-        </button>
+        <div className="flex gap-3">
+          <a href={settings.spotifyEmbedUrl.replace('/embed', '')} target="_blank" rel="noreferrer" className="text-bunny-muted hover:text-[#1DB954] transition-colors" title="Open in Spotify">
+            <ExternalLink className="w-4 h-4" />
+          </a>
+          <button onClick={() => setIsEditing(true)} className="text-bunny-muted hover:text-bunny-primary transition-colors" title="Change Playlist">
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
       </div>
-
-      {currentTrack ? (
-        <div className="flex items-center gap-4 mb-4">
-          <div className="w-16 h-16 bg-bunny-border rounded-xl shadow-sm overflow-hidden flex-shrink-0">
-            <img src={currentTrack.album.images[0]?.url} alt="Album art" className="w-full h-full object-cover" />
-          </div>
-          <div className="overflow-hidden flex-1">
-            <h4 className="font-bold text-sm truncate">{currentTrack.name}</h4>
-            <p className="text-xs text-bunny-muted truncate mt-0.5">{currentTrack.artists[0]?.name}</p>
-          </div>
-        </div>
-      ) : (
-        <div className="py-6 text-center text-bunny-muted text-sm">
-          Nothing playing right now.
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mt-auto pt-2">
-        <div className="flex gap-2">
-          {isPlaying && (
-            <div className="flex items-center gap-1">
-              <span className="w-1 h-3 bg-[#1DB954] animate-pulse"></span>
-              <span className="w-1 h-4 bg-[#1DB954] animate-pulse delay-75"></span>
-              <span className="w-1 h-2 bg-[#1DB954] animate-pulse delay-150"></span>
-            </div>
-          )}
-        </div>
-        <a href="https://open.spotify.com" target="_blank" rel="noreferrer" className="text-xs font-bold text-bunny-muted hover:text-bunny-primary flex items-center gap-1">
-          Open App <ExternalLink className="w-3 h-3" />
-        </a>
+      <div className="flex-1 bg-bunny-cream">
+        <iframe 
+          style={{ borderRadius: '0' }} 
+          src={settings.spotifyEmbedUrl} 
+          width="100%" 
+          height="100%" 
+          frameBorder="0" 
+          allowFullScreen 
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
+          loading="lazy"
+        ></iframe>
       </div>
     </Card>
   );
