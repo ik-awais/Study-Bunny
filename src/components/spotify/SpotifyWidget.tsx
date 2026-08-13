@@ -1,10 +1,21 @@
+import { useEffect } from 'react';
 import { Music, ExternalLink, Settings } from 'lucide-react';
 import { Card, Button } from '../ui/SharedUI';
 import { useSpotifyStore } from '../../store/useSpotifyStore';
 import { initiateSpotifyLogin } from '../../lib/spotify';
 
 export const SpotifyWidget = () => {
-  const { accessToken, currentTrack, isPlaying, logout } = useSpotifyStore();
+  const { accessToken, currentTrack, isPlaying, logout, fetchPlaybackState } = useSpotifyStore();
+
+  useEffect(() => {
+    if (!accessToken) return;
+    
+    // Fetch immediately, then every 10 seconds to stay in sync
+    fetchPlaybackState();
+    const interval = setInterval(fetchPlaybackState, 10000); 
+    
+    return () => clearInterval(interval);
+  }, [accessToken, fetchPlaybackState]);
 
   if (!accessToken) {
     return (
@@ -53,7 +64,13 @@ export const SpotifyWidget = () => {
 
       <div className="flex items-center justify-between mt-auto pt-2">
         <div className="flex gap-2">
-          {isPlaying && <div className="flex items-center gap-1"><span className="w-1 h-3 bg-[#1DB954] animate-pulse"></span><span className="w-1 h-4 bg-[#1DB954] animate-pulse delay-75"></span><span className="w-1 h-2 bg-[#1DB954] animate-pulse delay-150"></span></div>}
+          {isPlaying && (
+            <div className="flex items-center gap-1">
+              <span className="w-1 h-3 bg-[#1DB954] animate-pulse"></span>
+              <span className="w-1 h-4 bg-[#1DB954] animate-pulse delay-75"></span>
+              <span className="w-1 h-2 bg-[#1DB954] animate-pulse delay-150"></span>
+            </div>
+          )}
         </div>
         <a href="https://open.spotify.com" target="_blank" rel="noreferrer" className="text-xs font-bold text-bunny-muted hover:text-bunny-primary flex items-center gap-1">
           Open App <ExternalLink className="w-3 h-3" />
