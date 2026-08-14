@@ -13,9 +13,9 @@ initDB()
   .then(async () => {
     await useSettingsStore.getState().loadSettings();
     const user = useAuthStore.getState().user;
-if (user) {
-  await useDataStore.getState().refreshAll(user.id);
-}
+    if (user) {
+      await useDataStore.getState().refreshAll(user.id);
+    }
     await useTimerStore.getState().recoverState();
   })
   .catch(console.error);
