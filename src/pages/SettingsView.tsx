@@ -3,9 +3,13 @@ import { Card, Button, Input } from '../components/ui/SharedUI';
 import { Mic, Palette, Download, Info, Bell, Upload } from 'lucide-react';
 import { useVoiceCommand } from '../hooks/useVoiceCommand';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { useDataStore } from '../store/useDataStore';
 
 export const SettingsView = () => {
   const { status: voiceStatus, toggleVoice } = useVoiceCommand();
+  const { user, logout, requestDriveAccess } = useAuthStore();
+  const { syncToDrive, restoreFromDriveBackup } = useDataStore();
   
   const isSupported = voiceStatus !== 'unsupported';
   const isListening = voiceStatus === 'listening';
@@ -26,6 +30,39 @@ export const SettingsView = () => {
   return (
     <div className="max-w-3xl space-y-8 animate-in fade-in pb-10">
       <h1 className="text-3xl font-rounded font-bold">Settings</h1>
+      
+      {/* Account & Sync */}
+      <Card className="mb-6">
+        <h2 className="text-xl font-bold font-rounded mb-6">Account & Sync</h2>
+        
+        {user && (
+          <div className="flex flex-col sm:flex-row items-center gap-4 mb-6 p-4 bg-bunny-cream/50 rounded-2xl border border-bunny-border">
+            <img src={user.picture} alt="Profile" className="w-12 h-12 rounded-full border-2 border-bunny-primary/20" />
+            <div className="flex-1 text-center sm:text-left">
+              <p className="font-bold text-bunny-text leading-tight">{user.name}</p>
+              <p className="text-xs text-bunny-muted">{user.email}</p>
+            </div>
+            <Button onClick={logout} variant="outline" className="text-xs py-1.5 px-4 text-bunny-error border-bunny-error/30 hover:bg-bunny-error/10">Sign Out</Button>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-4 bg-bunny-cream rounded-2xl border border-bunny-border">
+            <div>
+              <p className="font-bold text-sm">Google Drive Backup</p>
+              <p className="text-xs text-bunny-muted">Securely back up your local data to a private Drive folder.</p>
+            </div>
+            {!user?.hasDriveAccess ? (
+              <Button onClick={requestDriveAccess} className="bg-blue-600 hover:bg-blue-700 text-xs py-1.5 px-4 shadow-sm">Connect Drive</Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button onClick={syncToDrive} variant="outline" className="text-xs py-1.5">Backup Now</Button>
+                <Button onClick={restoreFromDriveBackup} className="text-xs py-1.5 bg-bunny-primary">Restore</Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
       
       {/* Timer Preferences */}
       <Card className="space-y-6">

@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { saveSettings, getSettings, recordSession, updatePlannerItem } from '../lib/db';
+import { saveSettings, getSettings, recordSession } from '../lib/db';
 import { useDataStore } from './useDataStore';
 import { useSettingsStore } from './useSettingsStore';
+import { useAuthStore } from './useAuthStore';
 
 type TimerMode = 'countdown' | 'pomodoro';
 type TimerStatus = 'idle' | 'running' | 'paused' | 'completed';
@@ -174,17 +175,18 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
         finalPauseMs += (now - state.pauseStartTime);
       }
       
-      if (timeSpent > 60000) { // Only record if > 1 minute
+      // 🚀 Grab the current logged-in user
+      const user = useAuthStore.getState().user;
+      
+      if (timeSpent > 60000 && user) { // Only record if > 1 minute and user is logged in
         await recordSession({
-          id: Date.now().toString(), // <-- Added this line
+          id: Date.now().toString(),
+          userId: user.id, // 🚀 Now required for Data Isolation!
           title: state.context?.title || 'Study Session',
           subject: state.context?.subject || 'General Focus',
           durationMinutes: Math.round(state.targetDurationMs / 60000),
           actualDurationMs: Math.min(timeSpent, state.targetDurationMs),
-          
-          // 🚀 THE FIX: This safely writes pause duration to the DB exactly as calculated!
           pauseDurationMs: finalPauseMs || 0,
-          
           date: new Date().toLocaleDateString('en-CA'),
           timestamp: Date.now(),
           mode: state.mode,
@@ -197,10 +199,15 @@ export const useTimerStore = create<TimerState>()((set, get) => ({
           const plannerItems = useDataStore.getState().planner;
           const target = plannerItems.find(p => p.id === state.context!.plannerId);
           if (target) {
-            await updatePlannerItem(target.id, { completed: true });
+            // 🚀 Call the Zustand store directly. It expects (id, completed)
+            await useDataStore.getState().togglePlanner(target.id, true);
           }
         }
-        await useDataStore.getState().refreshAll();
+      }
+      
+      // 🚀 Pass the userId to refreshAll so it knows whose data to reload
+      if (user) {
+        await useDataStore.getState().refreshAll(user.id);
       }
     }
 

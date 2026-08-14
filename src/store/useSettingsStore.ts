@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { getSettings, saveSettings, getAllData, initDB } from '../lib/db';
 import { useDataStore } from './useDataStore';
 import { useToastStore } from './useToastStore';
+import { useAuthStore } from './useAuthStore';
 
 export interface AppSettings {
   soundEnabled: boolean;
@@ -97,7 +98,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       // Native IndexedDB transaction completion
       await new Promise(resolve => tx.oncomplete = resolve);
       
-      await useDataStore.getState().refreshAll();
+      const user = useAuthStore.getState().user;
+      if (user) {
+        await useDataStore.getState().refreshAll(user.id);
+      };
       await get().loadSettings();
       useToastStore.getState().addToast('Data imported successfully!', 'success');
     } catch (e) {
