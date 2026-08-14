@@ -43,9 +43,17 @@ export interface PlannerItem {
   completed: boolean;
 }
 
+export interface CustomCommand {
+  id: string;
+  userId: string;
+  phrase: string;
+  action: 'OPEN_PLANNER' | 'OPEN_GOALS' | 'OPEN_STATS' | 'START_TIMER';
+  enabled: boolean;
+}
+
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('study-bunny-db', 3);
+    const request = indexedDB.open('study-bunny-db', 4); // 🚀 Bumped to v4
     
     request.onerror = () => reject(request.error);
     request.onsuccess = (event) => {
@@ -72,6 +80,10 @@ export const initDB = (): Promise<IDBDatabase> => {
       let plannerStore = db.objectStoreNames.contains('planner') 
         ? target.transaction!.objectStore('planner') 
         : db.createObjectStore('planner', { keyPath: 'id' });
+      
+      let customCommandsStore = db.objectStoreNames.contains('customCommands') 
+        ? target.transaction!.objectStore('customCommands') 
+        : db.createObjectStore('customCommands', { keyPath: 'id' });
 
       // v3 Upgrades: Data Isolation Indices
       if (oldVersion < 3) {
@@ -85,14 +97,21 @@ export const initDB = (): Promise<IDBDatabase> => {
           plannerStore.createIndex('userId', 'userId', { unique: false });
         }
       }
+      
+      // v4 Upgrades: Custom Commands
+      if (oldVersion < 4) {
+        if (!customCommandsStore.indexNames.contains('userId')) {
+          customCommandsStore.createIndex('userId', 'userId', { unique: false });
+        }
+      }
     };
   });
 };
 
 export const migrateAnonymousData = async (userId: string): Promise<void> => {
   const db = await initDB();
-  const tx = db.transaction(['sessions', 'goals', 'planner'], 'readwrite');
-  const stores = ['sessions', 'goals', 'planner'];
+  const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands'], 'readwrite');
+  const stores = ['sessions', 'goals', 'planner', 'customCommands'];
   
   for (const storeName of stores) {
     const store = tx.objectStore(storeName);
@@ -150,10 +169,10 @@ export const getSettings = async (key: string): Promise<any> => {
 
 export const getAllData = async (): Promise<any> => {
   const db = await initDB();
-  const tx = db.transaction(['settings', 'sessions', 'goals', 'planner'], 'readonly');
+  const tx = db.transaction(['settings', 'sessions', 'goals', 'planner', 'customCommands'], 'readonly');
   const data: Record<string, any> = {};
   
-  const stores = ['settings', 'sessions', 'goals', 'planner'];
+  const stores = ['settings', 'sessions', 'goals', 'planner', 'customCommands'];
   
   for (const storeName of stores) {
     data[storeName] = await new Promise((resolve) => {
@@ -171,6 +190,54 @@ export const updatePlannerItem = async (item: PlannerItem): Promise<void> => {
   const db = await initDB();
   const tx = db.transaction('planner', 'readwrite');
   tx.objectStore('planner').put(item);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+// --- Custom Command Helper Functions ---
+export const addCustomCommand = async (command: Omit<CustomCommand, 'id'>): Promise<string> => {
+  const db = await initDB();
+  const id = Date.now().toString();
+  const newCommand: CustomCommand = { ...command, id };
+  const tx = db.transaction('customCommands', 'readwrite');
+  tx.objectStore('customCommands').put(newCommand);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(id);
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const getCustomCommands = async (userId: string): Promise<CustomCommand[]> => {
+  const db = await initDB();
+  const tx = db.transaction('customCommands', 'readonly');
+  const store = tx.objectStore('customCommands');
+  const index = store.index('userId');
+  const req = index.getAll(userId);
+  return new Promise((resolve, reject) => {
+    req.onsuccess = (event) => {
+      const target = event.target as IDBRequest;
+      resolve(target.result as CustomCommand[]);
+    };
+    req.onerror = () => reject(req.error);
+  });
+};
+
+export const deleteCustomCommand = async (id: string): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction('customCommands', 'readwrite');
+  tx.objectStore('customCommands').delete(id);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const updateCustomCommand = async (command: CustomCommand): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction('customCommands', 'readwrite');
+  tx.objectStore('customCommands').put(command);
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);

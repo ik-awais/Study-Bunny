@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { initDB } from '../lib/db';
-import type { Session, Goal, PlannerItem } from '../lib/db';
+import type { Session, Goal, PlannerItem, CustomCommand } from '../lib/db';
 import { useAuthStore } from './useAuthStore';
 import { backupToDrive, restoreFromDrive } from '../lib/driveSync';
 import { useToastStore } from './useToastStore';
@@ -19,6 +19,7 @@ interface DataState {
   goals: Goal[];
   planner: PlannerItem[];
   history: Session[];
+  customCommands: CustomCommand[];
 
   refreshAll: (userId: string) => Promise<void>;
   createGoal: (goal: Omit<Goal, 'id' | 'userId'>) => Promise<void>;
@@ -35,18 +36,20 @@ export const useDataStore = create<DataState>((set, get) => ({
   goals: [],
   planner: [],
   history: [],
+  customCommands: [],
 
   clearData: () => set({ 
     goals: [], 
     planner: [], 
-    history: [], 
+    history: [],
+    customCommands: [],
     stats: { todayMs: 0, weeklyMs: 0, totalMs: 0, completedCount: 0, avgSessionMs: 0, streak: 0 } 
   }),
 
   refreshAll: async (userId: string) => {
     if (!userId) return;
     const db = await initDB();
-    const tx = db.transaction(['sessions', 'goals', 'planner'], 'readonly');
+    const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands'], 'readonly');
     
     // Helper to fetch by userId index safely
     const fetchById = (storeName: string) => new Promise<any[]>((resolve) => {
@@ -63,6 +66,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     const goals = await fetchById('goals') as Goal[];
     const planner = await fetchById('planner') as PlannerItem[];
     const sessions = await fetchById('sessions') as Session[];
+    const customCommands = await fetchById('customCommands') as CustomCommand[];
 
     // Math Engine
     const now = new Date();
@@ -111,6 +115,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       goals, 
       planner, 
       history,
+      customCommands,
       stats: { todayMs, weeklyMs, totalMs, completedCount, avgSessionMs, streak: currentStreak } 
     });
   },
@@ -179,7 +184,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       const payload = { 
         goals: get().goals, 
         planner: get().planner, 
-        history: get().history, 
+        history: get().history,
+        customCommands: get().customCommands,
         version: '1.0', 
         exportedAt: Date.now(), 
         userId: user.id 
@@ -200,10 +206,10 @@ export const useDataStore = create<DataState>((set, get) => ({
       if (data.userId !== user.id) throw new Error("Backup identity mismatch.");
       
       const db = await initDB();
-      const tx = db.transaction(['sessions', 'goals', 'planner'], 'readwrite');
+      const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands'], 'readwrite');
       
       // Wipe current user's local data and overwrite with backup
-      for (const storeName of ['sessions', 'goals', 'planner']) {
+      for (const storeName of ['sessions', 'goals', 'planner', 'customCommands']) {
         const store = tx.objectStore(storeName);
         const index = store.index('userId');
         const req = index.getAllKeys(user.id);

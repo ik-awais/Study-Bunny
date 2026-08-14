@@ -7,13 +7,13 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useDataStore } from '../store/useDataStore';
 
 export const SettingsView = () => {
-  const { status: voiceStatus, toggleVoice } = useVoiceCommand();
+  const { state: voiceStatus, toggleVoice } = useVoiceCommand();
   const { user, logout, requestDriveAccess } = useAuthStore();
   const { syncToDrive, restoreFromDriveBackup } = useDataStore();
   
-  const isSupported = voiceStatus !== 'unsupported';
-  const isListening = voiceStatus === 'listening';
-  const hasPermission = voiceStatus !== 'denied';
+  const isSupported = voiceStatus !== 'UNSUPPORTED';
+  const isListening = voiceStatus === 'LISTENING';
+  const hasPermission = voiceStatus !== 'DENIED';
   const toggleListening = () => toggleVoice();
   const { settings, updateSetting, requestNotificationPermission, exportData, importData } = useSettingsStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
