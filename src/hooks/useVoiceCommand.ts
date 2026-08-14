@@ -22,12 +22,14 @@ export const useVoiceCommand = () => {
   const recognitionRef = useRef<any>(null);
   const shouldListenRef = useRef(false);
   const isStartingRef = useRef(false);
-  const hasInitialized = useRef(false);
+  
+  // 🚀 CRITICAL FIX: Lifecycle guards to prevent infinite ghost loops
+  const isMounted = useRef(true);
+  const initFired = useRef(false);
 
   const { start, stop, pause, resume, setMode } = useTimerStore();
   const { addToast } = useToastStore();
 
-  // --- ENTITY EXTRACTION ---
   const extractDuration = (text: string): number | null => {
     if (text.includes('half an hour') || text.includes('half hour')) return 30;
     if (text.includes('an hour') || text.includes('one hour')) return 60;
@@ -42,7 +44,6 @@ export const useVoiceCommand = () => {
     return match[2].startsWith('h') ? val * 60 : val;
   };
 
-  // --- INTENT PARSER ---
   const processTranscript = useCallback((transcript: string) => {
     const text = transcript.toLowerCase().trim().replace(/[.,!?]/g, '');
     if (!text) return;
@@ -71,51 +72,42 @@ export const useVoiceCommand = () => {
         }
         break;
       case 'PAUSE_TIMER':
-        pause();
-        actionStr = 'Paused timer (Tracking rest)';
-        addToast(actionStr, 'info');
+        pause(); actionStr = 'Paused timer'; addToast(actionStr, 'info');
         break;
       case 'RESUME_TIMER':
-        resume();
-        actionStr = 'Resumed timer';
-        addToast(actionStr, 'info');
+        resume(); actionStr = 'Resumed timer'; addToast(actionStr, 'info');
         break;
       case 'STOP_TIMER':
       case 'RESET_TIMER':
-        stop(false);
-        actionStr = 'Stopped/Reset session';
-        addToast(actionStr, 'info');
+        stop(false); actionStr = 'Stopped session'; addToast(actionStr, 'info');
         break;
       default:
-        // Optional AI Fallback Architecture hook
         actionStr = 'Unrecognized - Passed to AI Fallback';
         break;
     }
 
-    setDebug({ transcript: text, intent, duration, action: actionStr });
+    if (isMounted.current) setDebug({ transcript: text, intent, duration, action: actionStr });
   }, [start, stop, pause, resume, setMode, addToast]);
 
   const toggleVoice = useCallback((forceState?: boolean) => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setStatus('unsupported');
+      if (isMounted.current) setStatus('unsupported');
       return;
     }
 
     const nextState = forceState !== undefined ? forceState : !shouldListenRef.current;
     
     if (!nextState) {
-      // Turn Off
       shouldListenRef.current = false;
-      setStatus('inactive');
+      if (isMounted.current) setStatus('inactive');
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        // Force stop and prevent onend from restarting
+        try { recognitionRef.current.stop(); } catch(e) {}
       }
-      addToast('Voice engine deactivated.', 'info');
       return;
     }
 
-    // Turn On
     shouldListenRef.current = true;
     
     if (!recognitionRef.current) {
@@ -125,44 +117,41 @@ export const useVoiceCommand = () => {
       recognition.lang = 'en-US';
 
       recognition.onstart = () => {
-        setStatus('listening');
         isStartingRef.current = false;
-        setDebug(prev => ({ ...prev, action: 'Listening...' }));
+        if (isMounted.current && shouldListenRef.current) {
+          setStatus('listening');
+          setDebug(prev => ({ ...prev, action: 'Listening...' }));
+        }
       };
 
       recognition.onresult = (event: any) => {
-        // EXACT FIX: Loop backwards to find the most recent final transcript safely
         let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript + ' ';
-          }
+          if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + ' ';
         }
         if (finalTranscript) processTranscript(finalTranscript);
       };
 
       recognition.onerror = (e: any) => {
         isStartingRef.current = false;
-        if (e.error === 'not-allowed') {
-          setStatus('denied');
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
           shouldListenRef.current = false;
-          addToast('Microphone access denied by browser.', 'error');
-        } else if (e.error !== 'no-speech') {
-          setStatus('error');
+          if (isMounted.current) setStatus('denied');
+        } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
+          if (isMounted.current && shouldListenRef.current) setStatus('error');
         }
       };
 
       recognition.onend = () => {
         isStartingRef.current = false;
-        if (shouldListenRef.current) {
-          // EXACT FIX: 300ms safe backoff to prevent DOMException collisions
+        if (shouldListenRef.current && isMounted.current) {
           setTimeout(() => {
-            if (shouldListenRef.current && !isStartingRef.current) {
+            if (shouldListenRef.current && isMounted.current && !isStartingRef.current) {
               isStartingRef.current = true;
               try { recognitionRef.current.start(); } catch(e) { isStartingRef.current = false; }
             }
-          }, 300);
-        } else {
+          }, 400); // Controlled 400ms backoff
+        } else if (isMounted.current) {
           setStatus('inactive');
         }
       };
@@ -170,7 +159,7 @@ export const useVoiceCommand = () => {
       recognitionRef.current = recognition;
     }
 
-    if (!isStartingRef.current) {
+    if (!isStartingRef.current && shouldListenRef.current) {
       isStartingRef.current = true;
       try {
         recognitionRef.current.start();
@@ -181,30 +170,36 @@ export const useVoiceCommand = () => {
     }
   }, [processTranscript, addToast]);
 
-  // 1. Automatic Initialization on Mount
   useEffect(() => {
-    if (hasInitialized.current) return;
-    hasInitialized.current = true;
-    
-    // Check if browser natively supports it before auto-prompting
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setStatus('unsupported');
-      return;
+    isMounted.current = true;
+    if (!initFired.current) {
+      initFired.current = true;
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        setStatus('unsupported');
+      } else {
+        toggleVoice(true); // Auto-init ONCE
+      }
     }
 
-    // Try to auto-start. The browser will handle the permission UI.
-    toggleVoice(true);
+    return () => {
+      // 🚀 CRITICAL FIX: Utterly destroy the engine on unmount to prevent ghost loops
+      isMounted.current = false;
+      shouldListenRef.current = false;
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.onend = null; // Detach restarter
+          recognitionRef.current.abort();      // Kill active listening instantly
+        } catch(e) {}
+      }
+    };
   }, [toggleVoice]);
 
-  // 2. Global Keyboard Shortcut (Ctrl + Shift + P)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'p') {
-        // Prevent triggering inside inputs
         const target = e.target as HTMLElement;
         if (['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable) return;
-        
         e.preventDefault();
         toggleVoice();
       }

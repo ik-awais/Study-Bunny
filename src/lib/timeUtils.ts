@@ -83,3 +83,19 @@ export const msToTime = (ms: number): string => {
 export const formatDurationAdaptive = (ms: number, compact = false): string => {
   return formatDuration(ms, { compact, showSeconds: true });
 };
+
+export const formatLiveTimer = (ms: number): string => {
+  if (ms <= 0) return "00:00";
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  
+  const minStr = minutes.toString().padStart(2, '0');
+  const secStr = seconds.toString().padStart(2, '0');
+  
+  if (hours > 0) {
+    return `${hours.toString().padStart(2, '0')}:${minStr}:${secStr}`;
+  }
+  return `${minStr}:${secStr}`;
+};

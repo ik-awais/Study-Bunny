@@ -3,15 +3,7 @@ import { Play, Square, RotateCcw, Pause } from 'lucide-react';
 import { BunnyEars, BunnyFaceFocused, BunnySleep, BunnyFaceHappy, BunnyFaceBreak } from '../components/ui/BunnyElements';
 import { Badge } from '../components/ui/SharedUI';
 import { useTimerStore } from '../store/useTimerStore';
-import { formatDuration } from '../lib/timeUtils';
-
-const formatTime = (ms: number) => {
-  if (ms < 0) ms = 0;
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-};
+import { formatDuration, formatLiveTimer } from '../lib/timeUtils';
 
 export const TimerView = () => {
   const { status, mode, phase, remainingMs, targetDurationMs, setMode, start, pause, resume, stop } = useTimerStore();
@@ -68,7 +60,7 @@ export const TimerView = () => {
             {phase === 'break' ? 'Take a Break' : 'Focus Phase'}
           </Badge>
           <h1 className="text-7xl md:text-8xl font-rounded font-bold text-bunny-text tracking-tighter tabular-nums z-20">
-            {formatTime(remainingMs)}
+            {formatLiveTimer(remainingMs)}
           </h1>
           
           <div className="absolute bottom-10 w-16 opacity-70 z-20 transition-all duration-300">
@@ -118,7 +110,7 @@ export const TimerView = () => {
           <div className="text-4xl mb-3">🎉</div>
           <h3 className="text-xl font-bold font-rounded text-bunny-text mb-2">Session Complete!</h3>
           <p className="text-bunny-muted font-medium mb-4">
-            You focused for {formatDuration(accumulatedMs)}!
+            You focused for {formatDuration(accumulatedMs, { compact: false })}!
           </p>
           <button 
             onClick={() => stop(false)} 
