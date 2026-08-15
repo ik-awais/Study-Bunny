@@ -1,46 +1,21 @@
 export interface Session { id: string; userId: string; title: string; subject: string; durationMinutes: number; actualDurationMs: number; pauseDurationMs: number; date: string; timestamp: number; mode: string; completed: boolean; goalId?: string; plannerId?: string; }
 export interface Goal { id: string; userId: string; title: string; type: 'daily' | 'weekly' | 'monthly' | 'custom'; targetMs: number; targetSessions?: number; startDate?: string; endDate?: string; status: 'active' | 'completed'; priority: 'low' | 'medium' | 'high'; }
-export interface PlannerItem { id: string; userId: string; title: string; subject: string; plannedDurationMs: number; date: string; startTime?: string; endTime?: string; priority?: 'low' | 'medium' | 'high'; goalId?: string; description?: string; color?: string; completed: boolean; }
+export interface PlannerItem { id: string; userId: string; title: string; subject: string; plannedDurationMs: number; date: string; startTime?: string; endTime?: string; priority?: 'low' | 'medium' | 'high'; goalId?: string; description?: string; color?: string; completed: boolean; googleEventId?: string; }
 export interface CustomVoiceCommand { id: string; userId: string; phrase: string; aliases: string[]; actionType: 'NAVIGATE' | 'TIMER'; actionTarget: string; enabled: boolean; createdAt: number; updatedAt: number; }
-
-// 🚀 BATCH 6 AI MODELS
-export interface AIConversation {
-  id: string;
-  userId: string;
-  title: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface AIMessage {
-  id: string;
-  conversationId: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-  proposal?: {
-    summary: string;
-    affectedRecords?: number;
-    conflicts?: string[];
-    actions: any[];
-  } | null;
-  proposalState?: 'PENDING' | 'EXECUTING' | 'EXECUTED' | 'CANCELLED' | 'FAILED';
-}
+export interface AIConversation { id: string; userId: string; title: string; createdAt: number; updatedAt: number; }
+export interface AIMessage { id: string; conversationId: string; role: 'user' | 'assistant'; content: string; timestamp: number; proposal?: { summary: string; affectedRecords?: number; conflicts?: string[]; actions: any[]; } | null; proposalState?: 'PENDING' | 'EXECUTING' | 'EXECUTED' | 'CANCELLED' | 'FAILED'; }
 
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('study-bunny-db', 5); // 🚀 Bumped to v5
-    
+    const request = indexedDB.open('study-bunny-db', 5);
     request.onerror = () => reject(request.error);
     request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
-    
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
       const oldVersion = event.oldVersion;
 
       if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
 
-      // v1-v4 Stores
       const stores = ['sessions', 'goals', 'planner', 'customCommands'];
       stores.forEach(name => {
         if (!db.objectStoreNames.contains(name)) {
@@ -49,7 +24,6 @@ export const initDB = (): Promise<IDBDatabase> => {
         }
       });
 
-      // v5 Stores (AI Chat)
       if (!db.objectStoreNames.contains('aiConversations')) {
         const convStore = db.createObjectStore('aiConversations', { keyPath: 'id' });
         convStore.createIndex('userId', 'userId', { unique: false });
@@ -59,7 +33,6 @@ export const initDB = (): Promise<IDBDatabase> => {
         msgStore.createIndex('conversationId', 'conversationId', { unique: false });
       }
 
-      // Legacy migrations
       if (oldVersion < 4 && db.objectStoreNames.contains('customCommands')) {
         const tx = (event.target as any).transaction;
         const store = tx.objectStore('customCommands');
@@ -69,7 +42,6 @@ export const initDB = (): Promise<IDBDatabase> => {
   });
 };
 
-// ... (Keep existing recordSession, saveSettings, getSettings, getAllData exactly as they were) ...
 export const recordSession = async (session: Session): Promise<void> => {
   const db = await initDB();
   const tx = db.transaction('sessions', 'readwrite');

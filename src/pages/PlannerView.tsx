@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Clock, Target, FileText, CheckCircle, Circle, Play, Edit2, Trash2, X, AlertCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, Clock, Target, FileText, CheckCircle, Circle, Play, Edit2, Trash2, X, AlertCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, RefreshCw, Unlink } from 'lucide-react';
 import { useDataStore } from '../store/useDataStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { useTimerStore } from '../store/useTimerStore';
 import { globalNavigate } from '../lib/navigationService';
 import { calculateDurationMs, addDurationToTime} from '../lib/timeUtils';
+import { requestCalendarAccess, fetchCalendars } from '../lib/googleCalendar';
 import type { PlannerItem } from '../lib/db';
 import { Card, Button, Input, Select } from '../components/ui/SharedUI';
 
@@ -44,7 +46,6 @@ const getMonthDays = (date: Date) => {
   return days;
 };
 
-// 🚀 ROBUST OVERLAP ALGORITHM
 const getPositionedEvents = (events: PlannerItem[]) => {
   const sorted = [...events].sort((a,b) => timeToMins(a.startTime) - timeToMins(b.startTime) || b.plannedDurationMs - a.plannedDurationMs);
   const positioned: any[] = [];
@@ -119,7 +120,8 @@ const CurrentTimeIndicator = () => {
 };
 
 export const PlannerView = () => {
-  const { planner, goals, addPlannerItem, updatePlannerItem, deletePlannerItem, togglePlanner } = useDataStore();
+  const { user } = useAuthStore();
+  const { planner, goals, addPlannerItem, updatePlannerItem, deletePlannerItem, togglePlanner, gcalToken, gcalSettings, setGcalToken, setGcalSettings, syncPlannerToGoogle } = useDataStore();
   const startTimer = useTimerStore(s => s.start);
   const setTimerMode = useTimerStore(s => s.setMode);
 
@@ -132,6 +134,35 @@ export const PlannerView = () => {
   const [formData, setFormData] = useState<Partial<PlannerItem>>({});
   const [isDirty, setIsDirty] = useState(false);
   const [formError, setFormError] = useState('');
+
+  // GCAL State
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [calendars, setCalendars] = useState<any[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    if (gcalToken && isSyncModalOpen) {
+      fetchCalendars(gcalToken).then(setCalendars).catch(() => setGcalToken(null));
+    }
+  }, [gcalToken, isSyncModalOpen]);
+
+  const handleConnectGoogle = async () => {
+    try {
+      setIsSyncing(true);
+      const token = await requestCalendarAccess(user?.email);
+      setGcalToken(token);
+    } catch (e) {
+      alert('Failed to connect to Google Calendar.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    await syncPlannerToGoogle();
+    setIsSyncing(false);
+  };
 
   const navigateDate = (dir: 1 | -1) => {
     const next = new Date(baseDate);
@@ -166,7 +197,6 @@ export const PlannerView = () => {
     }
   };
 
-  // 🚀 EXPANDED SIGNATURE TO SUPPORT CLICK-TO-SCHEDULE
   const openForm = (event?: PlannerItem | null, defaultDate?: string, defaultTime?: string) => {
     if (event) {
       setEditingId(event.id);
@@ -184,7 +214,7 @@ export const PlannerView = () => {
   };
 
   const handleSlotClick = (dateStr: string, e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget) return; // Prevent swallow from children
+    if (e.target !== e.currentTarget) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
     const mins = Math.max(0, Math.min(1440, y));
@@ -220,7 +250,6 @@ export const PlannerView = () => {
     setIsDirty(false); setIsFormOpen(false);
   };
 
-  // 🚀 RESPONSIVE EVENT CARD
   const EventBlock = ({ event }: { event: any }) => {
     const heightPx = event.plannedDurationMs / 60000;
     const isTiny = heightPx <= 35;
@@ -235,7 +264,7 @@ export const PlannerView = () => {
         }`}
         style={{
           ...event.style, 
-          width: `calc(${event.style.width} - 4px)`, // Prevent horizontal overlap brushing
+          width: `calc(${event.style.width} - 4px)`, 
           borderLeftWidth: '4px', 
           borderLeftColor: event.completed ? '#cbd5e1' : (event.color || '#7c3aed'),
           zIndex: 10
@@ -264,7 +293,14 @@ export const PlannerView = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 flex-none">
         <div>
           <h1 className="text-3xl font-bold font-rounded text-bunny-text">Bunny Planner</h1>
-          <p className="text-bunny-muted text-sm">Visualize your schedule and study goals.</p>
+          <div className="flex items-center gap-2">
+            <p className="text-bunny-muted text-sm">Visualize your schedule and study goals.</p>
+            {gcalSettings.autoExport && gcalToken && (
+               <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-green-600 bg-green-50 px-2 py-0.5 rounded-md border border-green-200">
+                 <RefreshCw className="w-3 h-3"/> Sync Active
+               </span>
+            )}
+          </div>
         </div>
         
         <div className="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto">
@@ -282,6 +318,10 @@ export const PlannerView = () => {
             <button onClick={() => navigateDate(1)} className="p-1.5 text-bunny-muted hover:text-bunny-primary"><ChevronRight className="w-4 h-4"/></button>
           </div>
 
+          <Button variant="outline" onClick={() => setIsSyncModalOpen(true)} className="gap-2 text-sm px-3 shadow-sm bg-white" title="Calendar Sync Settings">
+             <CalendarIcon className="w-4 h-4 text-bunny-primary" /> Sync
+          </Button>
+
           <Button onClick={() => openForm()} className="gap-2 text-sm px-4 py-2 ml-auto md:ml-0 shadow-md">
             <Plus className="w-4 h-4" /> New Event
           </Button>
@@ -290,7 +330,6 @@ export const PlannerView = () => {
 
       <h2 className="text-lg font-bold text-bunny-text mb-4 text-center md:text-left">{getHeaderLabel()}</h2>
 
-      {/* 🚀 CALENDAR VIEWS SHELL */}
       <Card className="flex-1 flex flex-col bg-white border-bunny-border overflow-hidden shadow-sm relative">
         
         {/* DAY VIEW */}
@@ -317,14 +356,12 @@ export const PlannerView = () => {
           </div>
         )}
 
-        {/* 🚀 WEEK VIEW - Horizontally scrollable wrapper */}
+        {/* WEEK VIEW */}
         {view === 'week' && (() => {
           const weekDays = getWeekDays(baseDate);
           return (
             <div className="flex-1 overflow-x-auto hide-scrollbar">
               <div className="min-w-[700px] h-full flex flex-col">
-                
-                {/* Sticky Header */}
                 <div className="flex-none flex border-b border-bunny-border bg-white z-20 sticky top-0 shadow-sm">
                   <div className="w-12 sm:w-16 flex-none border-r border-bunny-border/50 bg-bunny-cream/30" />
                   {weekDays.map(d => {
@@ -339,8 +376,6 @@ export const PlannerView = () => {
                     )
                   })}
                 </div>
-
-                {/* Scrollable Body */}
                 <div className="flex-1 overflow-y-auto relative hide-scrollbar">
                   <div className="relative h-[1440px] flex">
                     <div className="w-12 sm:w-16 flex-none border-r border-bunny-border/50 bg-bunny-cream/30 z-10 sticky left-0">
@@ -366,7 +401,6 @@ export const PlannerView = () => {
                     })}
                   </div>
                 </div>
-
               </div>
             </div>
           )
@@ -511,6 +545,69 @@ export const PlannerView = () => {
             <div className="p-5 border-t border-bunny-border flex gap-3 bg-white">
               <Button variant="ghost" onClick={closeForm} className="flex-1">Cancel</Button>
               <Button onClick={saveForm} className="flex-1 shadow-md">{editingId ? 'Save Changes' : 'Schedule Session'}</Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* 🚀 CALENDAR SYNC SETTINGS MODAL */}
+      {isSyncModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" onClick={() => setIsSyncModalOpen(false)}>
+          <Card className="w-full max-w-md bg-white border-bunny-border shadow-2xl flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-bunny-border flex justify-between items-center bg-bunny-cream/30">
+              <h2 className="text-xl font-bold font-rounded text-bunny-text flex items-center gap-2">
+                <CalendarIcon className="w-5 h-5 text-bunny-primary"/> Google Calendar Sync
+              </h2>
+              <button onClick={() => setIsSyncModalOpen(false)} className="p-1 text-bunny-muted hover:bg-bunny-border rounded-full"><X className="w-5 h-5" /></button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {!gcalToken ? (
+                <div className="text-center space-y-4">
+                  <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-2 shadow-sm border border-blue-100">
+                    <CalendarIcon className="w-8 h-8" />
+                  </div>
+                  <h3 className="font-bold text-bunny-text">Connect to Google</h3>
+                  <p className="text-sm text-bunny-muted">Securely export your Study Bunny sessions to your personal Google Calendar.</p>
+                  <Button onClick={handleConnectGoogle} disabled={isSyncing} className="w-full shadow-md">
+                    {isSyncing ? <RefreshCw className="w-5 h-5 animate-spin mx-auto" /> : 'Authorize Calendar Access'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <div>
+                    <label className="text-xs font-bold uppercase text-bunny-muted mb-1 block">Destination Calendar</label>
+                    <Select 
+                      value={gcalSettings.calendarId || ''} 
+                      onChange={e => setGcalSettings({ ...gcalSettings, calendarId: e.target.value })}
+                      className="w-full bg-bunny-cream/50"
+                    >
+                      <option value="" disabled>Select a calendar...</option>
+                      {calendars.map(c => <option key={c.id} value={c.id}>{c.summary} {c.primary ? '(Primary)' : ''}</option>)}
+                    </Select>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-4 bg-bunny-cream/30 border border-bunny-border rounded-xl">
+                    <div>
+                      <h4 className="font-bold text-sm text-bunny-text">Auto-Export Events</h4>
+                      <p className="text-[10px] text-bunny-muted max-w-[200px]">Changes made in Study Bunny will automatically sync to Google.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" className="sr-only peer" checked={gcalSettings.autoExport} onChange={e => setGcalSettings({ ...gcalSettings, autoExport: e.target.checked })} />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bunny-primary"></div>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <Button onClick={handleManualSync} disabled={!gcalSettings.calendarId || isSyncing} className="shadow-sm gap-2">
+                      <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} /> Sync Now
+                    </Button>
+                    <Button onClick={() => { setGcalToken(null); setGcalSettings({ calendarId: null, autoExport: false }); }} variant="outline" className="text-red-500 hover:bg-red-50 hover:border-red-200 gap-2 border-2">
+                      <Unlink className="w-4 h-4" /> Disconnect
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         </div>

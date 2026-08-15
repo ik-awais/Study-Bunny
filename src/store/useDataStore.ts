@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import { initDB } from '../lib/db';
+import { initDB, getSettings, saveSettings } from '../lib/db';
 import type { Session, Goal, PlannerItem, CustomVoiceCommand, AIConversation, AIMessage } from '../lib/db';
 import { useAuthStore } from './useAuthStore';
 import { backupToDrive, restoreFromDrive } from '../lib/driveSync';
 import { useToastStore } from './useToastStore';
+import { exportEventToGoogle, updateEventInGoogle, deleteEventFromGoogle } from '../lib/googleCalendar';
 
 interface Stats {
   todayMs: number;
@@ -22,6 +23,8 @@ interface DataState {
   customCommands: CustomVoiceCommand[];
   aiConversations: AIConversation[];
   currentChatMessages: AIMessage[];
+  gcalToken: string | null;
+  gcalSettings: { calendarId: string | null; autoExport: boolean };
 
   refreshAll: (userId: string) => Promise<void>;
   clearData: () => void;
@@ -45,6 +48,11 @@ interface DataState {
   deleteAiConversation: (conversationId: string) => Promise<void>;
   renameAiConversation: (conversationId: string, newTitle: string) => Promise<void>;
 
+  // Google Calendar Sync
+  setGcalToken: (token: string | null) => void;
+  setGcalSettings: (settings: { calendarId: string | null; autoExport: boolean }) => Promise<void>;
+  syncPlannerToGoogle: () => Promise<void>;
+
   syncToDrive: () => Promise<void>;
   restoreFromDriveBackup: () => Promise<void>;
 }
@@ -57,6 +65,8 @@ export const useDataStore = create<DataState>((set, get) => ({
   customCommands: [],
   aiConversations: [],
   currentChatMessages: [],
+  gcalToken: null,
+  gcalSettings: { calendarId: null, autoExport: false },
 
   clearData: () => set({
     goals: [],
@@ -86,6 +96,9 @@ export const useDataStore = create<DataState>((set, get) => ({
       fetchById<CustomVoiceCommand>('customCommands'),
       fetchById<AIConversation>('aiConversations')
     ]);
+
+    // Load Google Calendar settings
+    const gcalSettings = await getSettings(`gcalSettings_${userId}`) || { calendarId: null, autoExport: false };
 
     const now = new Date();
     const todayStr = now.toLocaleDateString('en-CA');
@@ -130,8 +143,36 @@ export const useDataStore = create<DataState>((set, get) => ({
       history: sortedHistory,
       customCommands: customCommands.sort((a, b) => b.createdAt - a.createdAt),
       aiConversations: aiConversations.sort((a, b) => b.updatedAt - a.updatedAt),
+      gcalSettings,
       stats: { todayMs, weeklyMs, totalMs, completedCount, avgSessionMs, streak: currentStreak }
     });
+  },
+
+  setGcalToken: (token) => set({ gcalToken: token }),
+
+  setGcalSettings: async (settings) => {
+    const userId = useAuthStore.getState().user?.id;
+    if (userId) await saveSettings(`gcalSettings_${userId}`, settings);
+    set({ gcalSettings: settings });
+  },
+
+  syncPlannerToGoogle: async () => {
+    const { planner, gcalToken, gcalSettings } = get();
+    if (!gcalToken || !gcalSettings.calendarId || !navigator.onLine) return;
+    
+    const db = await initDB();
+    const tx = db.transaction('planner', 'readwrite');
+    const store = tx.objectStore('planner');
+
+    for (const item of planner) {
+      if (!item.completed && new Date(item.date) >= new Date(new Date().setHours(0,0,0,0))) {
+        try {
+          const newGcalId = await updateEventInGoogle(gcalToken, gcalSettings.calendarId, item);
+          if (newGcalId !== item.googleEventId) store.put({ ...item, googleEventId: newGcalId });
+        } catch (e) { console.error("Sync failed for item", item.id, e); }
+      }
+    }
+    useToastStore.getState().addToast('Calendar sync complete.', 'success');
   },
 
   createGoal: async (goal) => {
@@ -159,9 +200,29 @@ export const useDataStore = create<DataState>((set, get) => ({
     if (!userId) return;
     const db = await initDB();
     const tx = db.transaction('planner', 'readwrite');
-    tx.objectStore('planner').put({ ...item, id: Date.now().toString(), userId, completed: item.completed || false });
+    const store = tx.objectStore('planner');
+    
+    const newItem: PlannerItem = { 
+      ...item, 
+      id: Date.now().toString(), 
+      userId, 
+      completed: false 
+    };
+    store.put(newItem);
     await new Promise(res => { tx.oncomplete = res; });
     get().refreshAll(userId);
+
+    // Background Google Sync
+    const { gcalToken, gcalSettings } = get();
+    if (gcalToken && gcalSettings.calendarId && gcalSettings.autoExport && navigator.onLine) {
+      try {
+        const gcalId = await exportEventToGoogle(gcalToken, gcalSettings.calendarId, newItem);
+        if (gcalId) {
+          const tx2 = (await initDB()).transaction('planner', 'readwrite');
+          tx2.objectStore('planner').put({ ...newItem, googleEventId: gcalId });
+        }
+      } catch (e) { console.error("Auto-sync failed", e); }
+    }
   },
 
   togglePlanner: async (id, completed) => {
@@ -193,30 +254,57 @@ export const useDataStore = create<DataState>((set, get) => ({
     const store = tx.objectStore('planner');
     const req = store.get(id);
 
-    req.onsuccess = (event) => {
-      const target = event.target as IDBRequest;
-      const data = target.result as PlannerItem | undefined;
+    let updatedItem: PlannerItem | null = null;
+    req.onsuccess = (e) => {
+      const data = (e.target as IDBRequest).result;
       if (data) {
-        Object.assign(data, updates);
-        store.put(data);
+        updatedItem = { ...data, ...updates };
+        store.put(updatedItem);
       }
     };
-
     await new Promise(res => { tx.oncomplete = res; });
-    useToastStore.getState().addToast('Event updated successfully.', 'success');
+    useToastStore.getState().addToast('Event updated.', 'success');
     get().refreshAll(userId);
+
+    // Background Google Sync
+    const { gcalToken, gcalSettings } = get();
+    const syncItem = updatedItem as PlannerItem | null; // 🚀 FIX: Forces TS to re-evaluate type out of closure
+    
+    if (syncItem && gcalToken && gcalSettings.calendarId && gcalSettings.autoExport && navigator.onLine) {
+      try {
+        const gcalId = await updateEventInGoogle(gcalToken, gcalSettings.calendarId, syncItem);
+        if (gcalId && gcalId !== syncItem.googleEventId) {
+           const tx2 = (await initDB()).transaction('planner', 'readwrite');
+           tx2.objectStore('planner').put({ ...syncItem, googleEventId: gcalId });
+        }
+      } catch (e) { console.error("Auto-sync failed", e); }
+    }
   },
 
   deletePlannerItem: async (id) => {
     const userId = useAuthStore.getState().user?.id;
     if (!userId) return;
+    
+    // Fetch first to see if it has a googleEventId
     const db = await initDB();
+    const item: PlannerItem = await new Promise((res) => {
+      const req = db.transaction('planner', 'readonly').objectStore('planner').get(id);
+      req.onsuccess = () => res(req.result);
+    });
+
     const tx = db.transaction('planner', 'readwrite');
     tx.objectStore('planner').delete(id);
-    
     await new Promise(res => { tx.oncomplete = res; });
     useToastStore.getState().addToast('Event deleted.', 'info');
     get().refreshAll(userId);
+
+    // Background Google Sync
+    const { gcalToken, gcalSettings } = get();
+    if (item?.googleEventId && gcalToken && gcalSettings.calendarId && gcalSettings.autoExport && navigator.onLine) {
+      try {
+        await deleteEventFromGoogle(gcalToken, gcalSettings.calendarId, item.googleEventId);
+      } catch (e) { console.error("Failed to delete from Google Calendar", e); }
+    }
   },
 
   createCustomCommand: async (cmd) => {
