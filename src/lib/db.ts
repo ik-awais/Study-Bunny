@@ -20,6 +20,8 @@ export interface AIMessage {
   timestamp: number;
   proposal?: {
     summary: string;
+    affectedRecords?: number;
+    conflicts?: string[];
     actions: any[];
   } | null;
   proposalState?: 'PENDING' | 'EXECUTING' | 'EXECUTED' | 'CANCELLED' | 'FAILED';

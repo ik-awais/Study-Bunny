@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Plus, Sparkles, User, Loader2, Maximize2, Minimize2, Mic, CheckCircle, XCircle, X } from 'lucide-react';
+import { Send, Plus, Sparkles, User, Loader2, Maximize2, Minimize2, Mic, CheckCircle, XCircle, X, AlertTriangle } from 'lucide-react';
 import { useDataStore } from '../../store/useDataStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTimerStore } from '../../store/useTimerStore';
@@ -38,17 +38,14 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
     if (activeChatId) loadAiMessages(activeChatId);
   }, [activeChatId, loadAiMessages]);
 
-  // 🚀 Smart Auto-Scroll Behavior
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.target as HTMLDivElement;
-    const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50; // 50px buffer
+    const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
     setShouldAutoScroll(isAtBottom);
   };
 
   useEffect(() => {
-    if (shouldAutoScroll && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (shouldAutoScroll && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [currentChatMessages, isTyping, shouldAutoScroll]);
 
   const handleNewChat = () => {
@@ -68,10 +65,7 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
     const rec = new SpeechRecognition();
     rec.continuous = false;
     rec.interimResults = false;
-    rec.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript;
-      setInput(prev => (prev + ' ' + transcript).trim());
-    };
+    rec.onresult = (e: any) => { setInput(prev => (prev + ' ' + e.results[0][0].transcript).trim()); };
     rec.onend = () => setIsDictating(false);
     rec.onerror = () => setIsDictating(false);
     
@@ -89,7 +83,7 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
     
     setInput('');
     setIsTyping(true);
-    setShouldAutoScroll(true); // Force scroll to bottom on new message
+    setShouldAutoScroll(true);
 
     await saveAiMessage(chatId, 'user', text, text.slice(0, 30));
 
@@ -99,45 +93,20 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
         { role: 'user', content: text }
       ];
 
-      // 🚀 VERBOSE DATE STRING FOR LLM DATE MATH
+      // 🚀 ENHANCED CONTEXT BUILDER: Includes IDs and End Times for precision AI tracking
       const contextPayload = {
         user: { name: user?.name?.split(' ')[0] },
-        currentDateTime: new Date().toLocaleString('en-US', { 
-          weekday: 'long', 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric', 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
-        stats: { 
-          today: formatDuration(stats.todayMs, { compact: false }), 
-          weekly: formatDuration(stats.weeklyMs, { compact: false }), 
-          streak: stats.streak 
-        },
-        goals: goals.filter(g => g.status === 'active').map(g => ({ 
-          title: g.title, 
-          target: formatDuration(g.targetMs, { compact: true }) 
-        })),
-        planner: planner.filter(p => !p.completed).map(p => ({ 
-          title: p.title, 
-          subject: p.subject, 
-          date: p.date, 
-          startTime: p.startTime 
-        })),
-        timer: { 
-          status: timerStore.status, 
-          phase: timerStore.phase 
-        }
+        currentDateTime: new Date().toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        stats: { today: formatDuration(stats.todayMs, { compact: false }), weekly: formatDuration(stats.weeklyMs, { compact: false }), streak: stats.streak },
+        goals: goals.filter(g => g.status === 'active').map(g => ({ id: g.id, title: g.title, target: formatDuration(g.targetMs, { compact: true }) })),
+        planner: planner.filter(p => !p.completed).map(p => ({ id: p.id, title: p.title, subject: p.subject, date: p.date, startTime: p.startTime, endTime: p.endTime })),
+        timer: { status: timerStore.status, phase: timerStore.phase }
       };
 
       const res = await fetch('/api/voice/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: messagesPayload,
-          context: contextPayload
-        })
+        body: JSON.stringify({ messages: messagesPayload, context: contextPayload })
       });
 
       const data = await res.json();
@@ -152,19 +121,15 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
   };
 
   const executeProposal = async (msg: AIMessage) => {
-    // 🚀 STRICT LOCK: Only execute if strictly PENDING. Protects against duplicate clicks.
     if (!msg.proposal || msg.proposalState !== 'PENDING') return;
-    
     await updateAiMessage(msg.id, { proposalState: 'EXECUTING' });
-    
     const success = await executeAIActions(msg.proposal.actions);
-    
     if (success) {
       await updateAiMessage(msg.id, { proposalState: 'EXECUTED' });
-      await saveAiMessage(msg.conversationId, 'assistant', 'Done! I have safely applied the complete plan to your Bunny Planner and Goals.');
+      await saveAiMessage(msg.conversationId, 'assistant', 'Done! I have safely applied the changes to your Bunny Planner.');
     } else {
       await updateAiMessage(msg.id, { proposalState: 'FAILED' });
-      await saveAiMessage(msg.conversationId, 'assistant', 'I encountered an error and could not complete the plan atomically. No changes were applied.');
+      await saveAiMessage(msg.conversationId, 'assistant', 'I encountered an error and could not complete the transaction atomically. No changes were applied.');
     }
   };
 
@@ -184,7 +149,6 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
   return (
     <div className={`flex flex-col h-full w-full bg-white overflow-hidden animate-in fade-in ${isMaximized ? '' : 'sm:rounded-b-3xl'}`}>
       
-      {/* 🚀 STICKY HEADER - Flex None ensures it NEVER scrolls away */}
       <div className="flex-none flex justify-between items-center p-3 border-b border-bunny-border bg-bunny-cream/95 backdrop-blur-md z-20 shadow-sm">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-bunny-primary hidden sm:block" />
@@ -206,26 +170,17 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
           <Button onClick={handleNewChat} variant="ghost" className="p-1.5 text-bunny-primary hover:bg-bunny-primary/10 rounded-lg sm:hidden" title="New Chat">
             <Plus className="w-4 h-4" />
           </Button>
-          
           <div className="w-px h-4 bg-bunny-border mx-1"></div>
-          
           <Button onClick={() => setIsMaximized(!isMaximized)} variant="ghost" className="p-1.5 text-bunny-muted hover:text-bunny-primary hover:bg-bunny-cream rounded-lg" title={isMaximized ? "Minimize" : "Maximize"}>
             {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </Button>
-          
-          {/* 🚀 DIRECT FULLSCREEN CLOSE BUTTON */}
           <Button onClick={onClose} variant="ghost" className="p-1.5 text-bunny-muted hover:text-bunny-error hover:bg-red-50 rounded-lg" title="Close Assistant">
             <X className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
-      {/* 🚀 INDEPENDENT SCROLL AREA - Flex 1 min-h-0 securely bounds the scrollbar */}
-      <div 
-        ref={scrollRef} 
-        onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-bunny-cream/20"
-      >
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-bunny-cream/20">
         {currentChatMessages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center opacity-70">
             <Sparkles className="w-12 h-12 text-bunny-primary mb-3" />
@@ -242,9 +197,7 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
           currentChatMessages.map(msg => (
             <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-full bg-bunny-primary text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <Sparkles className="w-4 h-4" />
-                </div>
+                <div className="w-8 h-8 rounded-full bg-bunny-primary text-white flex items-center justify-center flex-shrink-0 shadow-sm"><Sparkles className="w-4 h-4" /></div>
               )}
               
               <div className="flex flex-col max-w-[85%]">
@@ -252,25 +205,35 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
                   {renderMarkdown(msg.content)}
                 </div>
 
+                {/* 🚀 UPGRADED PROPOSAL CARD WITH CONFLICT DETECTION */}
                 {msg.proposal && (
                   <Card className="mt-2 p-4 bg-white border-2 border-bunny-primary/30 shadow-md">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-bunny-primary mb-2 flex items-center gap-1"><Sparkles className="w-3.5 h-3.5"/> Proposed Action</h4>
-                    <p className="text-sm font-medium text-bunny-text mb-4 bg-bunny-cream/50 p-2 rounded-lg">{msg.proposal.summary}</p>
+                    <p className="text-sm font-medium text-bunny-text mb-3 bg-bunny-cream/50 p-2 rounded-lg">{msg.proposal.summary}</p>
                     
-                    {msg.proposalState === 'PENDING' && (
-                      <div className="flex flex-wrap gap-2">
-                        <Button onClick={() => executeProposal(msg)} className="text-xs py-1.5 px-3 flex-1 min-w-[120px] shadow-sm"><CheckCircle className="w-3.5 h-3.5 mr-1"/> Add to Bunny Planner</Button>
-                        <Button onClick={() => cancelProposal(msg)} variant="outline" className="text-xs py-1.5 px-3 flex-1 min-w-[120px]"><XCircle className="w-3.5 h-3.5 mr-1"/> Cancel</Button>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                       <span className="text-[10px] uppercase font-bold text-bunny-muted bg-bunny-cream px-2 py-1 rounded-md border border-bunny-border">
+                         {msg.proposal.affectedRecords || msg.proposal.actions.length} Records Affected
+                       </span>
+                    </div>
+
+                    {msg.proposal.conflicts && msg.proposal.conflicts.length > 0 && (
+                      <div className="mb-4 p-2.5 bg-orange-50 border border-orange-200 rounded-xl">
+                        <p className="text-xs font-bold text-orange-700 flex items-center gap-1 mb-1"><AlertTriangle className="w-3.5 h-3.5"/> Schedule Conflict</p>
+                        <ul className="text-xs text-orange-600 list-disc list-inside ml-1">
+                          {msg.proposal.conflicts.map((c: string, i: number) => <li key={i}>{c}</li>)}
+                        </ul>
                       </div>
                     )}
                     
-                    {msg.proposalState === 'EXECUTING' && (
-                      <span className="text-xs font-bold text-bunny-primary flex items-center gap-1 animate-pulse">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin"/> Executing...
-                      </span>
+                    {msg.proposalState === 'PENDING' && (
+                      <div className="flex flex-wrap gap-2">
+                        <Button onClick={() => executeProposal(msg)} className="text-xs py-1.5 px-3 flex-1 min-w-[120px] shadow-sm"><CheckCircle className="w-3.5 h-3.5 mr-1"/> Apply Changes</Button>
+                        <Button onClick={() => cancelProposal(msg)} variant="outline" className="text-xs py-1.5 px-3 flex-1 min-w-[120px]"><XCircle className="w-3.5 h-3.5 mr-1"/> Cancel</Button>
+                      </div>
                     )}
-                    
-                    {msg.proposalState === 'EXECUTED' && <span className="text-xs font-bold text-green-600 flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5"/> Action Executed</span>}
+                    {msg.proposalState === 'EXECUTING' && <span className="text-xs font-bold text-bunny-primary flex items-center gap-1 animate-pulse"><Loader2 className="w-3.5 h-3.5 animate-spin"/> Executing...</span>}
+                    {msg.proposalState === 'EXECUTED' && <span className="text-xs font-bold text-green-600 flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5"/> Changes Applied</span>}
                     {msg.proposalState === 'CANCELLED' && <span className="text-xs font-bold text-bunny-muted flex items-center gap-1"><XCircle className="w-3.5 h-3.5"/> Cancelled</span>}
                     {msg.proposalState === 'FAILED' && <span className="text-xs font-bold text-red-500 flex items-center gap-1"><XCircle className="w-3.5 h-3.5"/> Execution Failed</span>}
                   </Card>
@@ -278,9 +241,7 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
               </div>
 
               {msg.role === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-bunny-cream text-bunny-muted border border-bunny-border flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <User className="w-4 h-4" />
-                </div>
+                <div className="w-8 h-8 rounded-full bg-bunny-cream text-bunny-muted border border-bunny-border flex items-center justify-center flex-shrink-0 shadow-sm"><User className="w-4 h-4" /></div>
               )}
             </div>
           ))
@@ -294,24 +255,11 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
         )}
       </div>
 
-      {/* 🚀 FIXED COMPOSER - Flex None ensures it docks to the bottom */}
       <div className="flex-none p-3 border-t border-bunny-border bg-white flex gap-2 items-center z-20">
-        <button 
-          onClick={toggleDictation}
-          className={`p-2.5 rounded-xl transition-colors border shadow-sm flex-shrink-0 ${isDictating ? 'bg-red-50 border-red-200 text-red-500 animate-pulse' : 'bg-bunny-cream border-bunny-border text-bunny-muted hover:text-bunny-primary hover:border-bunny-primary/30'}`}
-          title="Dictate message"
-        >
+        <button onClick={toggleDictation} className={`p-2.5 rounded-xl transition-colors border shadow-sm flex-shrink-0 ${isDictating ? 'bg-red-50 border-red-200 text-red-500 animate-pulse' : 'bg-bunny-cream border-bunny-border text-bunny-muted hover:text-bunny-primary hover:border-bunny-primary/30'}`} title="Dictate message">
           <Mic className="w-5 h-5" />
         </button>
-        
-        <Input 
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
-          placeholder={isDictating ? "Listening..." : "Ask Bunny Assistant..."}
-          className="flex-1 bg-bunny-cream/30 focus:bg-white min-w-0"
-          disabled={isTyping}
-        />
+        <Input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} placeholder={isDictating ? "Listening..." : "Ask Bunny Assistant..."} className="flex-1 bg-bunny-cream/30 focus:bg-white min-w-0" disabled={isTyping} />
         <Button onClick={() => handleSend()} disabled={!input.trim() || isTyping} className="px-4 shadow-md flex-shrink-0"><Send className="w-4 h-4" /></Button>
       </div>
     </div>
