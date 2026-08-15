@@ -83,16 +83,40 @@ export const AIAssistantTab = () => {
         }
       };
 
-      const res = await fetch('/api/voice/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: messagesPayload,
-          context: contextPayload
-        })
-      });
+      let res;
+      try {
+        res = await fetch('/api/voice/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            messages: messagesPayload, 
+            context: contextPayload 
+          })
+        });
+      } catch (networkError) {
+        console.error("CLIENT_REQUEST_ERROR: Failed to fetch from /api/voice/chat", networkError);
+        await saveAiMessage(chatId, 'assistant', 'I lost my connection to the server. Please check your network and try again.');
+        setIsTyping(false);
+        return;
+      }
 
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseError) {
+        console.error("INVALID_SERVER_RESPONSE: Failed to parse JSON from server.", parseError);
+        await saveAiMessage(chatId, 'assistant', 'I received an invalid response from my servers.');
+        setIsTyping(false);
+        return;
+      }
+
+      if (!res.ok || data.success === false) {
+        console.error(`SERVER_ERROR (${data.errorCode || res.status}):`, data.message);
+        await saveAiMessage(chatId, 'assistant', data.message || 'I had trouble connecting to my servers. Please try asking again!');
+        setIsTyping(false);
+        return;
+      }
+
       await saveAiMessage(chatId, 'assistant', data.message);
 
       if (data.actions && data.actions.length > 0) {
@@ -105,7 +129,8 @@ export const AIAssistantTab = () => {
         }
       }
     } catch (error) {
-      await saveAiMessage(chatId, 'assistant', 'I lost my connection. Please check your network and try again.');
+      console.error("UNEXPECTED_CLIENT_ERROR:", error);
+      await saveAiMessage(chatId, 'assistant', 'I encountered an unexpected error. Please try again.');
     } finally {
       setIsTyping(false);
     }

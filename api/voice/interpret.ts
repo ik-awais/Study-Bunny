@@ -1,13 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST') return res.status(405).json({ success: false, errorCode: 'SERVER_405', message: 'Method not allowed' });
   
   const { transcript, context } = req.body;
-  if (!transcript) return res.status(400).json({ error: 'Transcript required' });
+  if (!transcript) return res.status(400).json({ success: false, errorCode: 'SERVER_400', message: 'Transcript required' });
 
   const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
-  if (!NVIDIA_API_KEY) return res.status(500).json({ error: 'AI config missing on server.' });
+  if (!NVIDIA_API_KEY) return res.status(500).json({ success: false, errorCode: 'MISSING_API_KEY', message: 'AI config missing on server.' });
 
   const systemPrompt = `You are Bunny Assistant.
 Current Date/Time: ${context?.currentDateTime || new Date().toISOString()}
@@ -54,19 +54,36 @@ RESPOND ONLY IN THIS STRICT JSON SCHEMA:
       })
     });
 
+    if (!response.ok) {
+      let errorCode = 'NVIDIA_BAD_REQUEST';
+      if (response.status === 401 || response.status === 403) errorCode = 'NVIDIA_AUTH_ERROR';
+      else if (response.status === 429) errorCode = 'NVIDIA_RATE_LIMIT';
+      else if (response.status === 504) errorCode = 'NVIDIA_TIMEOUT';
+      return res.status(502).json({ success: false, errorCode, message: 'I had trouble connecting to my AI provider.' });
+    }
+
     const data = await response.json();
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      return res.status(502).json({ success: false, errorCode: 'INVALID_SERVER_RESPONSE', message: 'I received an invalid response.' });
+    }
+
     const rawContent = data.choices[0].message.content;
+    let parsed;
     const jsonStart = rawContent.indexOf('{');
     const jsonEnd = rawContent.lastIndexOf('}') + 1;
-    const parsed = JSON.parse(rawContent.slice(jsonStart, jsonEnd));
     
-    res.status(200).json(parsed);
-  } catch (error) {
-    console.error("AI Parse Error:", error);
-    res.status(500).json({ 
-      message: 'I had trouble interpreting that. Please try again.', 
-      requiresConfirmation: false, 
-      actions: [] 
-    });
+    if (jsonStart !== -1 && jsonEnd > jsonStart) {
+      try {
+        parsed = JSON.parse(rawContent.slice(jsonStart, jsonEnd));
+      } catch (parseError) {
+        parsed = { message: 'I misunderstood the command. Please try again.', requiresConfirmation: false, actions: [] };
+      }
+    } else {
+      parsed = { message: 'I did not understand the requested action.', requiresConfirmation: false, actions: [] };
+    }
+    
+    return res.status(200).json({ success: true, ...parsed });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, errorCode: 'SERVER_500', message: 'I encountered an unexpected server error.' });
   }
 }
