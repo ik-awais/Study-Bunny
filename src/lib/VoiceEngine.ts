@@ -1,12 +1,10 @@
 import { useToastStore } from '../store/useToastStore';
 import { useDataStore } from '../store/useDataStore';
-import { matchAndExecute } from './CommandRegistry';
+import { resolveCommand, executeResolvedCommand } from './CommandRegistry';
+import type { ResolvedCommand, CommandResult } from './CommandRegistry';
 
 declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-  }
+  interface Window { SpeechRecognition: any; webkitSpeechRecognition: any; }
 }
 
 export type VoiceState = 'OFF' | 'STARTING' | 'LISTENING' | 'RECOVERING' | 'DENIED' | 'UNSUPPORTED' | 'ERROR';
@@ -17,6 +15,7 @@ export interface VoiceLog {
   transcript: string;
   intent: string;
   action: string;
+  success: boolean;
 }
 
 class VoiceEngineController {
@@ -26,6 +25,10 @@ class VoiceEngineController {
   
   private restartTimeout: any = null;
   private backoff = 500;
+  
+  // Exactly-Once Deduplication State
+  private lastTranscript = '';
+  private lastTranscriptTime = 0;
   
   public history: VoiceLog[] = [];
   private listeners: (() => void)[] = [];
@@ -54,9 +57,7 @@ class VoiceEngineController {
 
   public subscribe(listener: () => void) {
     this.listeners.push(listener);
-    return () => {
-      this.listeners = this.listeners.filter(l => l !== listener);
-    };
+    return () => { this.listeners = this.listeners.filter(l => l !== listener); };
   }
 
   private notify() {
@@ -74,9 +75,7 @@ class VoiceEngineController {
     } else {
       this.state = 'OFF';
       clearTimeout(this.restartTimeout);
-      try {
-        this.recognition.abort();
-      } catch (e) {}
+      try { this.recognition.abort(); } catch (e) {}
       this.notify();
     }
   }
@@ -115,30 +114,49 @@ class VoiceEngineController {
     }
   }
 
-  private handleResult(event: any) {
+  private async handleResult(event: any) {
     let finalTranscript = '';
     for (let i = event.resultIndex; i < event.results.length; ++i) {
-      if (event.results[i].isFinal) {
-        finalTranscript += event.results[i][0].transcript + ' ';
-      }
+      if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + ' ';
     }
     const text = finalTranscript.trim();
     if (!text) return;
 
-    const customCommands = useDataStore.getState().customCommands || [];
-    const outcome = matchAndExecute(text, customCommands);
+    // 🚀 EXACTLY-ONCE EXECUTION DEDUPLICATION (2000ms window)
+    const now = Date.now();
+    if (text === this.lastTranscript && now - this.lastTranscriptTime < 2000) {
+      return; 
+    }
+    this.lastTranscript = text;
+    this.lastTranscriptTime = now;
 
-    this.log(text, outcome.intent, outcome.action);
+    const customCommands = useDataStore.getState().customCommands || [];
+    
+    // 1. Structural Resolution
+    const resolved: ResolvedCommand | null = resolveCommand(text, customCommands);
+    
+    if (!resolved) {
+      // (Batch 4 AI Fallback will go here later)
+      useToastStore.getState().addToast("Command not recognized.", 'info');
+      this.log(text, 'UNRECOGNIZED', 'Ignored', false);
+      return;
+    }
+
+    // 2. Safely Execute and Feedback
+    const result: CommandResult = executeResolvedCommand(resolved);
+    
+    if (result.success) {
+      useToastStore.getState().addToast(result.message, 'success');
+    } else {
+      useToastStore.getState().addToast(result.message, 'error');
+    }
+
+    // 3. Log History
+    this.log(text, resolved.intentId, result.message, result.success);
   }
 
-  public log(transcript: string, intent: string, action: string) {
-    this.history.unshift({
-      id: Date.now().toString(),
-      time: new Date(),
-      transcript,
-      intent,
-      action
-    });
+  public log(transcript: string, intent: string, action: string, success: boolean) {
+    this.history.unshift({ id: Date.now().toString(), time: new Date(), transcript, intent, action, success });
     if (this.history.length > 50) this.history.pop();
     this.notify();
   }

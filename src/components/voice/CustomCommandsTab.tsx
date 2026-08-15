@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Plus, Edit2, Trash2, Play, AlertCircle, Sparkles, Check, X, Shield } from 'lucide-react';
 import { useDataStore } from '../../store/useDataStore';
-import { BUILT_IN_COMMANDS, checkCommandConflict, executeAction } from '../../lib/CommandRegistry';
+import { useToastStore } from '../../store/useToastStore';
+import { BUILT_IN_COMMANDS, checkCommandConflict, executeResolvedCommand } from '../../lib/CommandRegistry';
 import type { CustomVoiceCommand } from '../../lib/db';
 import { Card, Button, Input, Select } from '../ui/SharedUI';
+
 
 const ACTION_OPTIONS = [
   { group: 'Navigation', label: 'Open Dashboard', type: 'NAVIGATE', target: '/' },
@@ -110,7 +112,19 @@ export const CustomCommandsTab = () => {
   };
 
   const handleTest = (cmd: CustomVoiceCommand) => {
-    executeAction(cmd.actionType, cmd.actionTarget);
+    // Safely route the test through the new deterministic execution layer
+    const result = executeResolvedCommand({
+      source: 'CUSTOM',
+      intentId: cmd.id,
+      actionType: cmd.actionType,
+      actionTarget: cmd.actionTarget,
+      parameters: {}, // Testing bypasses natural language parameter parsing
+      phrase: cmd.phrase
+    });
+    
+    const toast = useToastStore.getState().addToast;
+    if (result.success) toast(`Test: ${result.message}`, 'success');
+    else toast(`Test failed: ${result.message}`, 'error');
   };
 
   const getActionLabel = (type: string, target: string) => {
