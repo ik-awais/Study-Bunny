@@ -1,140 +1,136 @@
-import { Play, Flame, Trophy } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Card, Button, ProgressBar, Badge } from '../components/ui/SharedUI';
-import { SpotifyWidget } from '../components/spotify/SpotifyWidget';
-import { useTimerStore } from '../store/useTimerStore';
+import { useEffect, useState, useMemo } from 'react';
+import { Play, CheckCircle, Target, TrendingUp, Clock, Calendar as CalendarIcon } from 'lucide-react';
 import { useDataStore } from '../store/useDataStore';
-import { formatDuration } from '../lib/timeUtils'; // 🚀 IMPORTED
+import { useTimerStore } from '../store/useTimerStore';
+import { formatDuration } from '../lib/timeUtils';
+import { Card, Button } from '../components/ui/SharedUI';
+import { globalNavigate } from '../lib/navigationService';
 
 export const Dashboard = () => {
-  const navigate = useNavigate();
-  const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const { stats, goals, planner } = useDataStore();
+  const { status, phase, accumulatedMs, lastStartTime } = useTimerStore();
+
+  // 🚀 LIVE GOAL CALCULATION (Real-time synchronization without database writes)
+  const [liveStudyOffset, setLiveStudyOffset] = useState(0);
   
-  const { status, remainingMs, start } = useTimerStore();
-  const { stats, planner, togglePlanner, goals } = useDataStore();
-  
-  const defaultDaily = goals.find(g => g.type === 'daily');
-  const dailyTargetMs = defaultDaily ? defaultDaily.targetMs : 3 * 3600000;
-  const todayPlanner = planner.filter(p => p.date === new Date().toLocaleDateString('en-CA'));
+  useEffect(() => {
+    if (status !== 'running' || phase !== 'focus') {
+      setLiveStudyOffset(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLiveStudyOffset(Date.now() - (lastStartTime || Date.now()));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [status, phase, lastStartTime]);
+
+  // Aggregate total live today time: 
+  // (Database stored todayMs) + (current session paused total) + (live running seconds)
+  const totalActiveSessionMs = phase === 'focus' ? (accumulatedMs + liveStudyOffset) : 0;
+  const liveTodayMs = stats.todayMs + totalActiveSessionMs;
+
+  const activeDailyGoal = useMemo(() => goals.find(g => g.type === 'daily' && g.status === 'active'), [goals]);
+  const goalProgressPct = activeDailyGoal ? Math.min(100, Math.round((liveTodayMs / activeDailyGoal.targetMs) * 100)) : 0;
+
+  const todayUpcoming = useMemo(() => {
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    return planner.filter(p => p.date === todayStr && !p.completed).sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  }, [planner]);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
-      
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-6 animate-in fade-in pb-10">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-bunny-muted text-sm font-bold uppercase tracking-wider mb-1">{currentDate}</h2>
-          <h1 className="text-4xl font-rounded font-bold text-bunny-text">Ready to focus? 🥕</h1>
+          <h1 className="text-3xl font-bold font-rounded text-bunny-text">Welcome back!</h1>
+          <p className="text-bunny-muted">Ready to crush your goals today?</p>
         </div>
-        <Card className="py-2 px-5 !rounded-2xl flex items-center gap-2 border-bunny-rose/20 bg-bunny-rose/5 shadow-none">
-          <Flame className={`w-5 h-5 ${stats.streak > 0 ? 'text-orange-500' : 'text-bunny-muted'}`} />
-          <span className="font-bold text-bunny-text">{stats.streak} Day Streak</span>
-        </Card>
-      </header>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="md:col-span-2 bg-bunny-primary text-white border-none flex flex-col sm:flex-row items-center justify-between gap-6 shadow-lg relative overflow-hidden">
-          <div className="z-10">
-            <Badge className="bg-white/20 text-white border-none mb-3">
-              {status === 'running' ? 'Currently Active' : 'Quick Start'}
-            </Badge>
-            <h2 className="text-3xl font-bold font-rounded mb-1">
-              {status === 'running' ? 'Session in Progress' : 'Pomodoro Session'}
-            </h2>
-            <p className="text-sm font-medium opacity-90">
-              {/* 🚀 FORMATTED REMAINING TIME */}
-              {status === 'running' ? `Time remaining: ${formatDuration(remainingMs, { compact: true })}` : '25 min deep focus • 5 min short break'}
-            </p>
-          </div>
-          <Link to="/timer" className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-md hover:scale-105 hover:shadow-xl transition-all text-bunny-primary flex-shrink-0 z-10">
-            <Play fill="currentColor" className="w-8 h-8 ml-1" />
-          </Link>
-          <div className="absolute -top-4 -right-2 opacity-10 pointer-events-none transform rotate-12">
-            <svg width="120" height="120" viewBox="0 0 100 100" fill="currentColor"><ellipse cx="30" cy="50" rx="15" ry="40" /><ellipse cx="70" cy="50" rx="15" ry="40" /></svg>
-          </div>
-        </Card>
-
-        <Card className="flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h3 className="font-bold text-bunny-muted mb-1">{defaultDaily ? defaultDaily.title : "Today's Goal"}</h3>
-              <div className="text-3xl font-bold font-rounded text-bunny-text">
-                {/* 🚀 FORMATTED TOTAL TARGET */}
-                {formatDuration(dailyTargetMs, { compact: false })}
-              </div>
-            </div>
-            <Trophy className="w-6 h-6 text-yellow-500" />
-          </div>
-          <div>
-            <div className="flex justify-between text-sm font-bold mb-2">
-              {/* 🚀 FORMATTED PROGRESS & REMAINING */}
-              <span className="text-bunny-text">{formatDuration(stats.todayMs, { compact: true })} done</span>
-              <span className="text-bunny-muted">{formatDuration(Math.max(0, dailyTargetMs - stats.todayMs), { compact: true })} left</span>
-            </div>
-            <ProgressBar progress={(stats.todayMs / dailyTargetMs) * 100} />
-          </div>
-        </Card>
+        <Button onClick={() => globalNavigate('/timer')} className="gap-2 shadow-md">
+          <Play className="w-5 h-5" /> Quick Start
+        </Button>
       </div>
 
-      <Card className="w-full bg-bunny-card border-bunny-border">
-         <h3 className="font-bold font-rounded text-lg mb-4 text-bunny-text">Overview</h3>
-         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 divide-x divide-bunny-border/50">
-            <div className="text-center px-2">
-               <p className="text-xs font-bold text-bunny-muted uppercase tracking-wider mb-1">Today</p>
-               {/* 🚀 FORMATTED STATS */}
-               <p className="text-2xl font-bold font-rounded text-bunny-text">{formatDuration(stats.todayMs, { compact: true })}</p>
-            </div>
-            <div className="text-center px-2 border-l-0 md:border-l">
-               <p className="text-xs font-bold text-bunny-muted uppercase tracking-wider mb-1">This Week</p>
-               <p className="text-2xl font-bold font-rounded text-bunny-text">{formatDuration(stats.weeklyMs, { compact: true })}</p>
-            </div>
-            <div className="text-center px-2">
-               <p className="text-xs font-bold text-bunny-muted uppercase tracking-wider mb-1">Sessions</p>
-               <p className="text-2xl font-bold font-rounded text-bunny-text">{stats.completedCount}</p>
-            </div>
-            <div className="text-center px-2 border-l-0 md:border-l">
-               <p className="text-xs font-bold text-bunny-muted uppercase tracking-wider mb-1">Avg Time</p>
-               <p className="text-2xl font-bold font-rounded text-bunny-text">{formatDuration(stats.avgSessionMs, { compact: true })}</p>
-            </div>
-         </div>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold font-rounded text-xl">Today's Plan</h3>
-            <Link to="/planner" className="text-sm font-bold text-bunny-muted hover:text-bunny-primary">Manage</Link>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* Real-Time Today's Goal Widget */}
+        <Card className="col-span-1 md:col-span-2 bg-gradient-to-br from-bunny-primary to-purple-600 text-white p-6 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
           
-          <div className="space-y-3">
-            {todayPlanner.length === 0 ? (
-              <p className="text-sm font-medium text-bunny-muted py-6 text-center">Nothing planned for today!</p>
-            ) : (
-              todayPlanner.map((p) => (
-                <div key={p.id} className={`flex items-center justify-between p-4 rounded-2xl transition-colors ${p.completed ? 'bg-bunny-cream/50 opacity-60' : 'bg-bunny-cream hover:bg-bunny-blush/40 group'}`}>
-                  <div className="flex items-center gap-4">
-                    <input type="checkbox" checked={p.completed} onChange={(e) => togglePlanner(p.id, e.target.checked)} className="w-5 h-5 accent-bunny-primary rounded cursor-pointer" />
-                    <div>
-                      <h4 className={`font-bold text-bunny-text ${p.completed ? 'line-through text-bunny-muted' : ''}`}>{p.title}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        {/* 🚀 FORMATTED PLANNER TIME */}
-                        <span className="text-xs font-bold text-bunny-muted">{formatDuration(p.plannedDurationMs, { compact: true })}</span>
-                        <span className="w-1 h-1 rounded-full bg-bunny-border"></span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-bunny-primary">{p.subject}</span>
-                      </div>
-                    </div>
-                  </div>
-                  {!p.completed && (
-                    <Button variant="ghost" onClick={() => { start(p.plannedDurationMs / 60000, { title: p.title, subject: p.subject, plannerId: p.id }); navigate('/timer'); }} className="opacity-0 group-hover:opacity-100 bg-white shadow-sm py-1.5 px-4 text-xs h-8">Start</Button>
-                  )}
-                </div>
-              ))
+          <div className="flex justify-between items-start mb-8 relative z-10">
+            <div>
+              <p className="text-white/80 font-bold uppercase tracking-wider text-xs mb-1">Today's Progress</p>
+              <h2 className="text-4xl font-bold font-rounded">
+                {formatDuration(liveTodayMs, { compact: false })}
+              </h2>
+            </div>
+            <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
+              <TrendingUp className="w-6 h-6 text-white" />
+            </div>
+          </div>
+
+          <div className="relative z-10">
+            <div className="flex justify-between text-sm font-medium text-white/90 mb-2">
+              <span>Goal: {activeDailyGoal ? formatDuration(activeDailyGoal.targetMs, { compact: true }) : 'None set'}</span>
+              <span>{goalProgressPct}%</span>
+            </div>
+            <div className="w-full h-3 bg-black/20 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-white rounded-full transition-all duration-1000 ease-out" 
+                style={{ width: `${goalProgressPct}%` }}
+              />
+            </div>
+            {status === 'running' && phase === 'focus' && (
+              <p className="text-[10px] mt-2 font-bold uppercase tracking-wider text-white/70 animate-pulse flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Live tracking active
+              </p>
             )}
           </div>
         </Card>
 
-        <div className="h-[220px]">
-          <SpotifyWidget />
+        {/* Quick Stats Widget */}
+        <div className="flex flex-col gap-6">
+          <Card className="flex-1 p-5 bg-white border-bunny-border flex flex-col justify-center">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-orange-100 text-orange-600 rounded-xl"><Target className="w-5 h-5" /></div>
+              <h3 className="font-bold text-bunny-text text-sm">Weekly Total</h3>
+            </div>
+            <p className="text-2xl font-bold font-rounded">{formatDuration(stats.weeklyMs, { compact: true })}</p>
+          </Card>
+          
+          <Card className="flex-1 p-5 bg-white border-bunny-border flex flex-col justify-center">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-green-100 text-green-600 rounded-xl"><CheckCircle className="w-5 h-5" /></div>
+              <h3 className="font-bold text-bunny-text text-sm">Current Streak</h3>
+            </div>
+            <p className="text-2xl font-bold font-rounded">{stats.streak} Days</p>
+          </Card>
         </div>
+      </div>
+
+      {/* Up Next in Planner */}
+      <div className="mt-8">
+        <div className="flex justify-between items-end mb-4">
+          <h2 className="text-lg font-bold font-rounded text-bunny-text">Up Next Today</h2>
+          <button onClick={() => globalNavigate('/planner')} className="text-sm font-bold text-bunny-primary hover:underline">View Planner</button>
+        </div>
+        
+        {todayUpcoming.length === 0 ? (
+          <Card className="p-6 text-center bg-white border-dashed border-2 border-bunny-border text-bunny-muted">
+            <CalendarIcon className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p className="font-medium text-sm">Nothing else scheduled for today.</p>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {todayUpcoming.slice(0, 3).map(event => (
+              <Card key={event.id} className="p-4 bg-white border-bunny-border hover:border-bunny-primary/50 transition-colors cursor-pointer" onClick={() => globalNavigate('/planner')}>
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-xs font-bold text-bunny-primary bg-bunny-primary/10 px-2 py-1 rounded-md">{event.startTime}</span>
+                </div>
+                <h3 className="font-bold text-bunny-text mb-1 truncate">{event.title}</h3>
+                <p className="text-xs text-bunny-muted truncate">{event.subject}</p>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

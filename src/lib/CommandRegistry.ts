@@ -286,3 +286,60 @@ export const simulateVoiceCommand = (text: string, customCommands: CustomVoiceCo
   const result = executeResolvedCommand(resolved);
   console.log("⚡ Execution Result:", result);
 };
+
+import { useDataStore } from '../store/useDataStore';
+
+export interface AIAction {
+  type: string;
+  parameters: any;
+}
+
+export const executeAIActions = async (actions: AIAction[]): Promise<boolean> => {
+  const dataStore = useDataStore.getState();
+  const timerStore = useTimerStore.getState();
+  let successCount = 0;
+
+  for (const action of actions) {
+    try {
+      if (action.type === 'CREATE_PLANNER_SESSION') {
+        await dataStore.addPlannerItem({
+          title: action.parameters.title || 'Study Session',
+          subject: action.parameters.subject || 'General',
+          date: action.parameters.date,
+          startTime: action.parameters.startTime,
+          endTime: addDurationToTime(action.parameters.startTime, action.parameters.plannedDurationMs || 3600000),
+          plannedDurationMs: action.parameters.plannedDurationMs || 3600000,
+          priority: 'medium'
+        });
+        successCount++;
+      } 
+      else if (action.type === 'DELETE_PLANNER_SESSION' && action.parameters.id) {
+        await dataStore.deletePlannerItem(action.parameters.id);
+        successCount++;
+      }
+      else if (action.type === 'CREATE_GOAL') {
+        await dataStore.createGoal({
+          title: action.parameters.title,
+          type: action.parameters.type || 'daily',
+          targetMs: action.parameters.targetMs || 3600000,
+          status: 'active',
+          priority: 'medium'
+        });
+        successCount++;
+      }
+      else if (action.type === 'START_TIMER') {
+        const mins = action.parameters.durationMs ? Math.round(action.parameters.durationMs / 60000) : undefined;
+        timerStore.setMode('countdown');
+        timerStore.start(mins);
+        successCount++;
+      }
+    } catch (e) {
+      console.error(`Failed to execute AI action: ${action.type}`, e);
+    }
+  }
+  
+  return successCount === actions.length;
+};
+
+// Quick helper missing from previous imports for the above block
+import { addDurationToTime } from './timeUtils';

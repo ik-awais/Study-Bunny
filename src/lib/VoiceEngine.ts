@@ -1,6 +1,6 @@
 import { useToastStore } from '../store/useToastStore';
 import { useDataStore } from '../store/useDataStore';
-import { resolveCommand, executeResolvedCommand } from './CommandRegistry';
+import { resolveCommand, executeResolvedCommand, executeAIActions } from './CommandRegistry';
 import type { ResolvedCommand, CommandResult } from './CommandRegistry';
 
 declare global {
@@ -130,29 +130,64 @@ class VoiceEngineController {
     this.lastTranscript = text;
     this.lastTranscriptTime = now;
 
-    const customCommands = useDataStore.getState().customCommands || [];
+    const dataStore = useDataStore.getState();
+    const customCommands = dataStore.customCommands || [];
     
-    // 1. Structural Resolution
+    // 1. Structural Resolution (Deterministic)
     const resolved: ResolvedCommand | null = resolveCommand(text, customCommands);
     
-    if (!resolved) {
-      // (Batch 4 AI Fallback will go here later)
-      useToastStore.getState().addToast("Command not recognized.", 'info');
-      this.log(text, 'UNRECOGNIZED', 'Ignored', false);
+    if (resolved) {
+      const result: CommandResult = executeResolvedCommand(resolved);
+      if (result.success) {
+        useToastStore.getState().addToast(result.message, 'success');
+      } else {
+        useToastStore.getState().addToast(result.message, 'error');
+      }
+      this.log(text, resolved.intentId, result.message, result.success);
       return;
     }
 
-    // 2. Safely Execute and Feedback
-    const result: CommandResult = executeResolvedCommand(resolved);
+    // 2. AI Fallback (Complex Natural Language)
+    useToastStore.getState().addToast("Thinking...", 'info');
     
-    if (result.success) {
-      useToastStore.getState().addToast(result.message, 'success');
-    } else {
-      useToastStore.getState().addToast(result.message, 'error');
-    }
+    try {
+      const response = await fetch('/api/voice/interpret', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          transcript: text,
+          context: {
+            currentDateTime: new Date().toISOString(),
+            goals: dataStore.goals.filter(g => g.status === 'active'),
+            planner: dataStore.planner.filter(p => !p.completed)
+          }
+        })
+      });
 
-    // 3. Log History
-    this.log(text, resolved.intentId, result.message, result.success);
+      const aiData = await response.json();
+
+      if (aiData.requiresConfirmation) {
+        if (!window.confirm(`AI proposes: ${aiData.message}\n\nProceed?`)) {
+          useToastStore.getState().addToast("Action canceled.", 'info');
+          this.log(text, 'AI_CANCELED', 'User denied confirmation', false);
+          return;
+        }
+      }
+
+      if (aiData.actions && aiData.actions.length > 0) {
+        const success = await executeAIActions(aiData.actions);
+        useToastStore.getState().addToast(aiData.message, success ? 'success' : 'error');
+        this.log(text, 'AI_EXECUTED', aiData.message, success);
+      } else {
+        useToastStore.getState().addToast(aiData.message, 'info');
+        this.log(text, 'AI_NO_ACTION', aiData.message, false);
+      }
+
+    } catch (e) {
+      console.error(e);
+      useToastStore.getState().addToast("AI service unavailable.", 'error');
+      this.log(text, 'AI_ERROR', 'Service unavailable', false);
+    }
   }
 
   public log(transcript: string, intent: string, action: string, success: boolean) {
