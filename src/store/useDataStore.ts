@@ -43,6 +43,7 @@ interface DataState {
   saveAiMessage: (conversationId: string, role: 'user' | 'assistant', content: string, title?: string, proposal?: any) => Promise<void>;
   updateAiMessage: (messageId: string, updates: Partial<AIMessage>) => Promise<void>;
   deleteAiConversation: (conversationId: string) => Promise<void>;
+  renameAiConversation: (conversationId: string, newTitle: string) => Promise<void>;
 
   syncToDrive: () => Promise<void>;
   restoreFromDriveBackup: () => Promise<void>;
@@ -360,6 +361,27 @@ export const useDataStore = create<DataState>((set, get) => ({
     set(state => ({
       currentChatMessages: state.currentChatMessages.map(m => m.id === messageId ? { ...m, ...updates } : m)
     }));
+  },
+
+  renameAiConversation: async (conversationId, newTitle) => {
+    const userId = useAuthStore.getState().user?.id;
+    if (!userId) return;
+    const db = await initDB();
+    const tx = db.transaction('aiConversations', 'readwrite');
+    const store = tx.objectStore('aiConversations');
+    const req = store.get(conversationId);
+
+    req.onsuccess = (e) => {
+      const conv = (e.target as IDBRequest).result as AIConversation | undefined;
+      if (conv) {
+        conv.title = newTitle;
+        conv.updatedAt = Date.now();
+        store.put(conv);
+      }
+    };
+    
+    await new Promise(res => { tx.oncomplete = res; });
+    get().refreshAll(userId);
   },
 
   deleteAiConversation: async (conversationId) => {
