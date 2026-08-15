@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Clock, Target, FileText, CheckCircle, Circle, Play, Edit2, Trash2, X, AlertCircle, ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { useDataStore } from '../store/useDataStore';
 import { useTimerStore } from '../store/useTimerStore';
@@ -44,28 +44,63 @@ const getMonthDays = (date: Date) => {
   return days;
 };
 
-// Calculates overlapping positions for a single day's column
+// 🚀 ROBUST OVERLAP ALGORITHM
 const getPositionedEvents = (events: PlannerItem[]) => {
   const sorted = [...events].sort((a,b) => timeToMins(a.startTime) - timeToMins(b.startTime) || b.plannedDurationMs - a.plannedDurationMs);
-  const columns: number[] = [];
-  const positioned = sorted.map(ev => {
+  const positioned: any[] = [];
+  
+  let currentGroup: any[] = [];
+  let groupEnd = -1;
+
+  const processGroup = (group: any[]) => {
+    const columns: any[][] = [];
+    group.forEach(ev => {
       const start = timeToMins(ev.startTime);
-      const end = start + ev.plannedDurationMs / 60000;
-      let col = 0;
-      while (columns[col] > start) col++;
-      columns[col] = end;
-      return { ...ev, col };
-  });
-  const maxCols = Math.max(1, ...positioned.map(e => e.col + 1));
-  return positioned.map(ev => ({
-      ...ev,
-      style: {
-          top: `${timeToMins(ev.startTime)}px`, 
+      let placed = false;
+      for (let i = 0; i < columns.length; i++) {
+        const last = columns[i][columns[i].length - 1];
+        const lastEnd = timeToMins(last.startTime) + (last.plannedDurationMs / 60000);
+        if (lastEnd <= start) {
+          columns[i].push(ev);
+          ev.col = i;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        ev.col = columns.length;
+        columns.push([ev]);
+      }
+    });
+    const maxCols = columns.length;
+    group.forEach(ev => {
+      positioned.push({
+        ...ev,
+        style: {
+          top: `${timeToMins(ev.startTime)}px`,
           height: `${ev.plannedDurationMs / 60000}px`,
           left: `${(ev.col / maxCols) * 100}%`,
           width: `${100 / maxCols}%`,
-      }
-  }));
+        }
+      });
+    });
+  };
+
+  sorted.forEach(ev => {
+    const start = timeToMins(ev.startTime);
+    const end = start + ev.plannedDurationMs / 60000;
+    if (start < groupEnd) {
+      currentGroup.push(ev);
+      groupEnd = Math.max(groupEnd, end);
+    } else {
+      if (currentGroup.length > 0) processGroup(currentGroup);
+      currentGroup = [ev];
+      groupEnd = end;
+    }
+  });
+  if (currentGroup.length > 0) processGroup(currentGroup);
+  
+  return positioned;
 };
 
 const CurrentTimeIndicator = () => {
@@ -106,9 +141,7 @@ export const PlannerView = () => {
     setBaseDate(next);
   };
 
-  const setToday = () => {
-    setBaseDate(new Date());
-  };
+  const setToday = () => setBaseDate(new Date());
 
   const getHeaderLabel = () => {
     if (view === 'day') return baseDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -133,18 +166,32 @@ export const PlannerView = () => {
     }
   };
 
-  const openForm = (event?: PlannerItem, defaultDate?: string) => {
+  // 🚀 EXPANDED SIGNATURE TO SUPPORT CLICK-TO-SCHEDULE
+  const openForm = (event?: PlannerItem | null, defaultDate?: string, defaultTime?: string) => {
     if (event) {
       setEditingId(event.id);
       setFormData({ ...event });
     } else {
       setEditingId(null);
       setFormData({
-        title: '', subject: '', date: defaultDate || toYYYYMMDD(baseDate), startTime: '09:00', endTime: '10:00',
+        title: '', subject: '', date: defaultDate || toYYYYMMDD(baseDate), 
+        startTime: defaultTime || '09:00', 
+        endTime: defaultTime ? addDurationToTime(defaultTime, 3600000) : '10:00',
         plannedDurationMs: 3600000, priority: 'medium', goalId: '', description: '', color: '#7c3aed'
       });
     }
     setIsDirty(false); setFormError(''); setDetailEvent(null); setIsFormOpen(true);
+  };
+
+  const handleSlotClick = (dateStr: string, e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return; // Prevent swallow from children
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const mins = Math.max(0, Math.min(1440, y));
+    const snapped = Math.floor(mins / 15) * 15;
+    const h = Math.floor(snapped / 60).toString().padStart(2, '0');
+    const m = (snapped % 60).toString().padStart(2, '0');
+    openForm(null, dateStr, `${h}:${m}`);
   };
 
   const closeForm = () => {
@@ -173,27 +220,47 @@ export const PlannerView = () => {
     setIsDirty(false); setIsFormOpen(false);
   };
 
-  const EventBlock = ({ event }: { event: any }) => (
-    <div
-      onClick={() => setDetailEvent(event)}
-      className={`absolute inset-x-0 mx-0.5 rounded-lg border shadow-sm transition-transform hover:scale-[1.02] cursor-pointer overflow-hidden flex flex-col p-1.5 z-10 ${
-        event.completed ? 'bg-bunny-cream/60 border-bunny-border opacity-70' : 'bg-white border-bunny-primary/30'
-      }`}
-      style={{ ...event.style, borderLeftWidth: '4px', borderLeftColor: event.completed ? '#cbd5e1' : (event.color || '#7c3aed') }}
-    >
-      <span className={`text-[10px] sm:text-xs font-bold leading-tight truncate ${event.completed ? 'line-through text-bunny-muted' : 'text-bunny-text'}`}>
-        {event.title}
-      </span>
-      {parseInt(event.style.height) >= 45 && (
-        <span className="text-[9px] sm:text-[10px] text-bunny-muted truncate">{event.startTime} - {event.subject}</span>
-      )}
-    </div>
-  );
+  // 🚀 RESPONSIVE EVENT CARD
+  const EventBlock = ({ event }: { event: any }) => {
+    const heightPx = event.plannedDurationMs / 60000;
+    const isTiny = heightPx <= 35;
+
+    return (
+      <div
+        onClick={(e) => { e.stopPropagation(); setDetailEvent(event); }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setDetailEvent(event); } }}
+        tabIndex={0}
+        className={`absolute rounded-md shadow-sm transition-all hover:z-30 cursor-pointer overflow-hidden flex flex-col p-1.5 focus:outline-none focus:ring-2 focus:ring-bunny-primary ${
+          event.completed ? 'bg-bunny-cream/80 border border-bunny-border opacity-70' : 'bg-white border border-bunny-primary/20 hover:shadow-md'
+        }`}
+        style={{
+          ...event.style, 
+          width: `calc(${event.style.width} - 4px)`, // Prevent horizontal overlap brushing
+          borderLeftWidth: '4px', 
+          borderLeftColor: event.completed ? '#cbd5e1' : (event.color || '#7c3aed'),
+          zIndex: 10
+        }}
+        title={`${event.title} (${event.startTime} - ${event.endTime})`}
+      >
+        {isTiny ? (
+          <div className="flex items-center gap-1 truncate w-full">
+            <span className={`text-[10px] font-bold truncate ${event.completed ? 'line-through text-bunny-muted' : 'text-bunny-text'}`}>
+              {event.startTime} {event.title}
+            </span>
+          </div>
+        ) : (
+          <>
+            <span className={`text-xs font-bold leading-tight truncate ${event.completed ? 'line-through text-bunny-muted' : 'text-bunny-text'}`}>{event.title}</span>
+            <span className="text-[10px] text-bunny-muted truncate mt-0.5">{event.startTime} - {event.subject}</span>
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] animate-in fade-in pb-10">
       
-      {/* 🚀 HEADER CONTROLS */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 flex-none">
         <div>
           <h1 className="text-3xl font-bold font-rounded text-bunny-text">Bunny Planner</h1>
@@ -203,10 +270,7 @@ export const PlannerView = () => {
         <div className="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto">
           <div className="flex items-center bg-white border border-bunny-border rounded-xl p-1 shadow-sm">
             {(['day', 'week', 'month'] as const).map(v => (
-              <button 
-                key={v} onClick={() => setView(v)} 
-                className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors ${view === v ? 'bg-bunny-primary text-white shadow-sm' : 'text-bunny-muted hover:text-bunny-text'}`}
-              >
+              <button key={v} onClick={() => setView(v)} className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors ${view === v ? 'bg-bunny-primary text-white shadow-sm' : 'text-bunny-muted hover:text-bunny-text'}`}>
                 {v}
               </button>
             ))}
@@ -226,14 +290,14 @@ export const PlannerView = () => {
 
       <h2 className="text-lg font-bold text-bunny-text mb-4 text-center md:text-left">{getHeaderLabel()}</h2>
 
-      {/* 🚀 CALENDAR VIEWS */}
+      {/* 🚀 CALENDAR VIEWS SHELL */}
       <Card className="flex-1 flex flex-col bg-white border-bunny-border overflow-hidden shadow-sm relative">
         
         {/* DAY VIEW */}
         {view === 'day' && (
           <div className="flex-1 overflow-y-auto relative hide-scrollbar">
             <div className="relative h-[1440px] flex">
-              <div className="w-16 flex-none border-r border-bunny-border/50 bg-bunny-cream/30">
+              <div className="w-16 flex-none border-r border-bunny-border/50 bg-bunny-cream/30 z-10 sticky left-0">
                 {Array.from({ length: 24 }).map((_, i) => (
                   <div key={i} className="h-[60px] relative">
                     <span className="absolute -top-2.5 right-2 text-[10px] font-bold text-bunny-muted bg-bunny-cream/30 px-1">
@@ -242,7 +306,10 @@ export const PlannerView = () => {
                   </div>
                 ))}
               </div>
-              <div className="flex-1 relative bg-[linear-gradient(to_bottom,#f8fafc_1px,transparent_1px)] bg-[size:100%_60px]">
+              <div 
+                className="flex-1 relative bg-[linear-gradient(to_bottom,#f8fafc_1px,transparent_1px)] bg-[size:100%_60px] cursor-pointer"
+                onClick={(e) => handleSlotClick(toYYYYMMDD(baseDate), e)}
+              >
                 {toYYYYMMDD(baseDate) === toYYYYMMDD(new Date()) && <CurrentTimeIndicator />}
                 {getPositionedEvents(planner.filter(p => p.date === toYYYYMMDD(baseDate))).map(ev => <EventBlock key={ev.id} event={ev} />)}
               </div>
@@ -250,45 +317,56 @@ export const PlannerView = () => {
           </div>
         )}
 
-        {/* WEEK VIEW */}
+        {/* 🚀 WEEK VIEW - Horizontally scrollable wrapper */}
         {view === 'week' && (() => {
           const weekDays = getWeekDays(baseDate);
           return (
-            <div className="flex flex-col h-full">
-              <div className="flex-none flex border-b border-bunny-border bg-bunny-cream/50 pr-2">
-                <div className="w-12 sm:w-16 flex-none border-r border-bunny-border/50" />
-                {weekDays.map(d => {
-                  const isToday = toYYYYMMDD(d) === toYYYYMMDD(new Date());
-                  return (
-                    <div key={d.toISOString()} className="flex-1 text-center py-2 border-r border-bunny-border/50 last:border-r-0">
-                      <div className="text-[10px] uppercase font-bold text-bunny-muted">{d.toLocaleDateString(undefined, { weekday: 'short' })}</div>
-                      <div className={`text-sm font-bold mx-auto w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-bunny-primary text-white shadow-md' : 'text-bunny-text'}`}>
-                        {d.getDate()}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-              <div className="flex-1 overflow-y-auto relative hide-scrollbar">
-                <div className="relative h-[1440px] flex">
-                  <div className="w-12 sm:w-16 flex-none border-r border-bunny-border/50 bg-bunny-cream/30">
-                    {Array.from({ length: 24 }).map((_, i) => (
-                      <div key={i} className="h-[60px] relative">
-                         <span className="absolute -top-2.5 right-1 sm:right-2 text-[9px] sm:text-[10px] font-bold text-bunny-muted">{i === 0 ? '12A' : i < 12 ? `${i}A` : i === 12 ? '12P' : `${i - 12}P`}</span>
-                      </div>
-                    ))}
-                  </div>
+            <div className="flex-1 overflow-x-auto hide-scrollbar">
+              <div className="min-w-[700px] h-full flex flex-col">
+                
+                {/* Sticky Header */}
+                <div className="flex-none flex border-b border-bunny-border bg-white z-20 sticky top-0 shadow-sm">
+                  <div className="w-12 sm:w-16 flex-none border-r border-bunny-border/50 bg-bunny-cream/30" />
                   {weekDays.map(d => {
-                    const dateStr = toYYYYMMDD(d);
-                    const isToday = dateStr === toYYYYMMDD(new Date());
+                    const isToday = toYYYYMMDD(d) === toYYYYMMDD(new Date());
                     return (
-                      <div key={dateStr} className="flex-1 relative border-r border-bunny-border/50 last:border-r-0 bg-[linear-gradient(to_bottom,#f8fafc_1px,transparent_1px)] bg-[size:100%_60px]">
-                        {isToday && <CurrentTimeIndicator />}
-                        {getPositionedEvents(planner.filter(p => p.date === dateStr)).map(ev => <EventBlock key={ev.id} event={ev} />)}
+                      <div key={d.toISOString()} className="flex-1 text-center py-2 border-r border-bunny-border/50 last:border-r-0">
+                        <div className="text-[10px] uppercase font-bold text-bunny-muted">{d.toLocaleDateString(undefined, { weekday: 'short' })}</div>
+                        <div className={`text-sm font-bold mx-auto w-7 h-7 flex items-center justify-center rounded-full mt-0.5 ${isToday ? 'bg-bunny-primary text-white shadow-md' : 'text-bunny-text'}`}>
+                          {d.getDate()}
+                        </div>
                       </div>
                     )
                   })}
                 </div>
+
+                {/* Scrollable Body */}
+                <div className="flex-1 overflow-y-auto relative hide-scrollbar">
+                  <div className="relative h-[1440px] flex">
+                    <div className="w-12 sm:w-16 flex-none border-r border-bunny-border/50 bg-bunny-cream/30 z-10 sticky left-0">
+                      {Array.from({ length: 24 }).map((_, i) => (
+                        <div key={i} className="h-[60px] relative">
+                           <span className="absolute -top-2.5 right-1 sm:right-2 text-[9px] sm:text-[10px] font-bold text-bunny-muted">{i === 0 ? '12A' : i < 12 ? `${i}A` : i === 12 ? '12P' : `${i - 12}P`}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {weekDays.map(d => {
+                      const dateStr = toYYYYMMDD(d);
+                      const isToday = dateStr === toYYYYMMDD(new Date());
+                      return (
+                        <div 
+                          key={dateStr} 
+                          className="flex-1 relative border-r border-bunny-border/50 last:border-r-0 bg-[linear-gradient(to_bottom,#f8fafc_1px,transparent_1px)] bg-[size:100%_60px] cursor-pointer hover:bg-bunny-primary/5 transition-colors"
+                          onClick={(e) => handleSlotClick(dateStr, e)}
+                        >
+                          {isToday && <CurrentTimeIndicator />}
+                          {getPositionedEvents(planner.filter(p => p.date === dateStr)).map(ev => <EventBlock key={ev.id} event={ev} />)}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
               </div>
             </div>
           )
@@ -333,7 +411,7 @@ export const PlannerView = () => {
         })()}
       </Card>
 
-      {/* --- EVENT DETAILS MODAL (Reused untouched from Batch 4) --- */}
+      {/* --- EVENT DETAILS MODAL --- */}
       {detailEvent && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" onClick={() => setDetailEvent(null)}>
           <Card className="w-full max-w-md bg-white border-bunny-border shadow-2xl overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
@@ -389,7 +467,7 @@ export const PlannerView = () => {
         </div>
       )}
 
-      {/* --- CREATE / EDIT FORM MODAL (Reused untouched from Batch 4) --- */}
+      {/* --- CREATE / EDIT FORM MODAL --- */}
       {isFormOpen && (
         <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" onClick={closeForm}>
           <Card className="w-full max-w-lg bg-white border-bunny-border shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
