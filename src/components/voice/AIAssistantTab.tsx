@@ -99,19 +99,44 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
         { role: 'user', content: text }
       ];
 
+      // 🚀 VERBOSE DATE STRING FOR LLM DATE MATH
+      const contextPayload = {
+        user: { name: user?.name?.split(' ')[0] },
+        currentDateTime: new Date().toLocaleString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric', 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        stats: { 
+          today: formatDuration(stats.todayMs, { compact: false }), 
+          weekly: formatDuration(stats.weeklyMs, { compact: false }), 
+          streak: stats.streak 
+        },
+        goals: goals.filter(g => g.status === 'active').map(g => ({ 
+          title: g.title, 
+          target: formatDuration(g.targetMs, { compact: true }) 
+        })),
+        planner: planner.filter(p => !p.completed).map(p => ({ 
+          title: p.title, 
+          subject: p.subject, 
+          date: p.date, 
+          startTime: p.startTime 
+        })),
+        timer: { 
+          status: timerStore.status, 
+          phase: timerStore.phase 
+        }
+      };
+
       const res = await fetch('/api/voice/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: messagesPayload,
-          context: {
-            user: { name: user?.name?.split(' ')[0] },
-            currentDateTime: new Date().toLocaleString(),
-            stats: { today: formatDuration(stats.todayMs, { compact: false }), weekly: formatDuration(stats.weeklyMs, { compact: false }), streak: stats.streak },
-            goals: goals.filter(g => g.status === 'active').map(g => ({ title: g.title, target: formatDuration(g.targetMs, { compact: true }) })),
-            planner: planner.filter(p => !p.completed).map(p => ({ title: p.title, subject: p.subject, date: p.date, startTime: p.startTime })),
-            timer: { status: timerStore.status, phase: timerStore.phase }
-          }
+          context: contextPayload
         })
       });
 
@@ -127,13 +152,19 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
   };
 
   const executeProposal = async (msg: AIMessage) => {
+    // 🚀 STRICT LOCK: Only execute if strictly PENDING. Protects against duplicate clicks.
     if (!msg.proposal || msg.proposalState !== 'PENDING') return;
-    await updateAiMessage(msg.id, { proposalState: 'EXECUTED' });
+    
+    await updateAiMessage(msg.id, { proposalState: 'EXECUTING' });
+    
     const success = await executeAIActions(msg.proposal.actions);
-    if (success) await saveAiMessage(msg.conversationId, 'assistant', 'Done! I have applied the changes to your Bunny Planner.');
-    else {
+    
+    if (success) {
+      await updateAiMessage(msg.id, { proposalState: 'EXECUTED' });
+      await saveAiMessage(msg.conversationId, 'assistant', 'Done! I have safely applied the complete plan to your Bunny Planner and Goals.');
+    } else {
       await updateAiMessage(msg.id, { proposalState: 'FAILED' });
-      await saveAiMessage(msg.conversationId, 'assistant', 'I encountered an error and could not complete the plan. No changes were applied.');
+      await saveAiMessage(msg.conversationId, 'assistant', 'I encountered an error and could not complete the plan atomically. No changes were applied.');
     }
   };
 
@@ -232,6 +263,13 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssis
                         <Button onClick={() => cancelProposal(msg)} variant="outline" className="text-xs py-1.5 px-3 flex-1 min-w-[120px]"><XCircle className="w-3.5 h-3.5 mr-1"/> Cancel</Button>
                       </div>
                     )}
+                    
+                    {msg.proposalState === 'EXECUTING' && (
+                      <span className="text-xs font-bold text-bunny-primary flex items-center gap-1 animate-pulse">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin"/> Executing...
+                      </span>
+                    )}
+                    
                     {msg.proposalState === 'EXECUTED' && <span className="text-xs font-bold text-green-600 flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5"/> Action Executed</span>}
                     {msg.proposalState === 'CANCELLED' && <span className="text-xs font-bold text-bunny-muted flex items-center gap-1"><XCircle className="w-3.5 h-3.5"/> Cancelled</span>}
                     {msg.proposalState === 'FAILED' && <span className="text-xs font-bold text-red-500 flex items-center gap-1"><XCircle className="w-3.5 h-3.5"/> Execution Failed</span>}

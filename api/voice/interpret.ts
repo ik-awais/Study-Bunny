@@ -10,11 +10,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!NVIDIA_API_KEY) return res.status(500).json({ success: false, errorCode: 'MISSING_API_KEY', message: 'AI config missing on server.' });
 
   const systemPrompt = `You are Bunny Assistant.
-Current Date/Time: ${context?.currentDateTime || new Date().toISOString()}
-Active Goals: ${JSON.stringify(context?.goals || [])}
-Upcoming Planner: ${JSON.stringify(context?.planner || [])}
 
-Convert natural language into structured actions. DO NOT invent information. If a request is too ambiguous, return empty actions and ask for clarification in the message. If the action is destructive (delete), set requiresConfirmation to true.
+CURRENT USER CONTEXT:
+- Local Date/Time: ${context?.currentDateTime || new Date().toISOString()}
+- Active Goals: ${JSON.stringify(context?.goals || [])}
+- Upcoming Planner: ${JSON.stringify(context?.planner || [])}
+
+GROUNDING & WORKFLOW RULES:
+1. RECURRING PLANS: If the user asks for a recurring plan (e.g. "Create 10 chemistry sessions", "every Tuesday for 5 weeks"), you MUST generate the individual actions for EACH occurrence by calculating the exact YYYY-MM-DD dates based on the Current Date/Time. Return an array of all the individual CREATE_PLANNER_SESSION actions.
+2. GOAL LINKING: If creating a goal AND sessions in the same plan, set "goalId": "NEW_GOAL" in the planner session parameters to link them.
+3. DO NOT invent information. If a request is too ambiguous, return empty actions and ask for clarification in the message.
+4. If the action is destructive (delete), set requiresConfirmation to true.
 
 Valid Action Types: CREATE_PLANNER_SESSION, EDIT_PLANNER_SESSION, DELETE_PLANNER_SESSION, CREATE_GOAL, START_TIMER.
 
@@ -30,7 +36,16 @@ RESPOND ONLY IN THIS STRICT JSON SCHEMA:
         "subject": "String",
         "date": "YYYY-MM-DD",
         "startTime": "HH:MM",
-        "plannedDurationMs": Number (milliseconds)
+        "plannedDurationMs": Number (milliseconds),
+        "goalId": "NEW_GOAL" // Optional: Use "NEW_GOAL" to link to a newly created goal
+      }
+    },
+    {
+      "type": "CREATE_GOAL",
+      "parameters": {
+        "title": "String",
+        "targetMs": Number (milliseconds),
+        "type": "custom" | "daily" | "weekly" | "monthly"
       }
     }
   ]

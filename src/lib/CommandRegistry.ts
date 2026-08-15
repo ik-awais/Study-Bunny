@@ -1,5 +1,9 @@
 import { useTimerStore } from '../store/useTimerStore';
 import { globalNavigate } from './navigationService';
+import { useDataStore } from '../store/useDataStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { initDB } from './db';
+import { addDurationToTime } from './timeUtils';
 import type { CustomVoiceCommand } from './db';
 
 // --- STRUCTURED MODELS ---
@@ -274,6 +278,121 @@ export const checkCommandConflict = (
   return { hasConflict: false };
 };
 
+// --- AI ACTION EXECUTION ENGINE ---
+
+export interface AIAction {
+  type: string;
+  parameters: any;
+}
+
+export const executeAIActions = async (actions: AIAction[]): Promise<boolean> => {
+  const dataStore = useDataStore.getState();
+  const timerStore = useTimerStore.getState();
+  const userId = useAuthStore.getState().user?.id;
+  if (!userId) return false;
+
+  // Split actions into Database Mutations and Runtime/State Actions
+  const dbActions = actions.filter(a => ['CREATE_PLANNER_SESSION', 'EDIT_PLANNER_SESSION', 'DELETE_PLANNER_SESSION', 'CREATE_GOAL', 'EDIT_GOAL'].includes(a.type));
+  const runtimeActions = actions.filter(a => ['START_TIMER', 'PAUSE_TIMER', 'RESUME_TIMER', 'STOP_TIMER', 'OPEN_PLANNER'].includes(a.type));
+
+  if (dbActions.length > 0) {
+    const db = await initDB();
+    const tx = db.transaction(['goals', 'planner'], 'readwrite');
+    let newGoalId = '';
+
+    try {
+      for (const act of dbActions) {
+        if (act.type === 'CREATE_GOAL') {
+          newGoalId = Date.now().toString() + Math.random().toString(36).substring(7);
+          tx.objectStore('goals').put({
+            title: act.parameters.title,
+            type: act.parameters.type || 'custom',
+            targetMs: act.parameters.targetMs || 3600000,
+            id: newGoalId,
+            userId,
+            status: 'active',
+            priority: act.parameters.priority || 'medium'
+          });
+        } 
+        else if (act.type === 'CREATE_PLANNER_SESSION') {
+          const pId = Date.now().toString() + Math.random().toString(36).substring(7);
+          const goalId = act.parameters.goalId === 'NEW_GOAL' ? newGoalId : (act.parameters.goalId || '');
+          
+          const startTime = act.parameters.startTime || '09:00';
+          const durationMs = act.parameters.plannedDurationMs || 3600000;
+          const endTime = act.parameters.endTime || addDurationToTime(startTime, durationMs);
+
+          tx.objectStore('planner').put({
+            title: act.parameters.title || 'Study Session',
+            subject: act.parameters.subject || 'General',
+            date: act.parameters.date,
+            startTime,
+            endTime,
+            plannedDurationMs: durationMs,
+            priority: act.parameters.priority || 'medium',
+            id: pId,
+            userId,
+            completed: false,
+            goalId
+          });
+        } 
+        else if (act.type === 'DELETE_PLANNER_SESSION' && act.parameters.id) {
+          tx.objectStore('planner').delete(act.parameters.id);
+        } 
+        else if (act.type === 'EDIT_PLANNER_SESSION' && act.parameters.id) {
+          const store = tx.objectStore('planner');
+          const existing: any = await new Promise((res, rej) => {
+            const req = store.get(act.parameters.id);
+            req.onsuccess = () => res(req.result);
+            req.onerror = () => rej(req.error);
+          });
+          if (existing && existing.userId === userId) {
+            // Recalculate end time if duration or start time changed
+            let updatedEnd = act.parameters.endTime || existing.endTime;
+            if (act.parameters.startTime || act.parameters.plannedDurationMs) {
+               updatedEnd = addDurationToTime(
+                 act.parameters.startTime || existing.startTime, 
+                 act.parameters.plannedDurationMs || existing.plannedDurationMs
+               );
+            }
+            store.put({ ...existing, ...act.parameters, endTime: updatedEnd, id: existing.id, userId });
+          }
+        }
+      }
+
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+
+      await dataStore.refreshAll(userId);
+    } catch (e) {
+      console.error("AI Atomic Transaction Failed", e);
+      try { tx.abort(); } catch (err) {}
+      return false;
+    }
+  }
+
+  // Execute Runtime/Timer Actions safely after DB succeeds
+  try {
+    for (const act of runtimeActions) {
+      if (act.type === 'START_TIMER') {
+        const mins = act.parameters.durationMs ? Math.round(act.parameters.durationMs / 60000) : undefined;
+        timerStore.setMode('countdown');
+        timerStore.start(mins, act.parameters);
+      } 
+      else if (act.type === 'PAUSE_TIMER') timerStore.pause();
+      else if (act.type === 'RESUME_TIMER') timerStore.resume();
+      else if (act.type === 'STOP_TIMER') timerStore.stop(true);
+      else if (act.type === 'OPEN_PLANNER') globalNavigate('/planner');
+    }
+  } catch (e) {
+    console.error("Runtime AI action failed", e);
+  }
+
+  return true;
+};
+
 // --- DEVELOPER TEST HARNESS ---
 export const simulateVoiceCommand = (text: string, customCommands: CustomVoiceCommand[]) => {
   console.log(`🎤 Simulating: "${text}"`);
@@ -286,60 +405,3 @@ export const simulateVoiceCommand = (text: string, customCommands: CustomVoiceCo
   const result = executeResolvedCommand(resolved);
   console.log("⚡ Execution Result:", result);
 };
-
-import { useDataStore } from '../store/useDataStore';
-
-export interface AIAction {
-  type: string;
-  parameters: any;
-}
-
-export const executeAIActions = async (actions: AIAction[]): Promise<boolean> => {
-  const dataStore = useDataStore.getState();
-  const timerStore = useTimerStore.getState();
-  let successCount = 0;
-
-  for (const action of actions) {
-    try {
-      if (action.type === 'CREATE_PLANNER_SESSION') {
-        await dataStore.addPlannerItem({
-          title: action.parameters.title || 'Study Session',
-          subject: action.parameters.subject || 'General',
-          date: action.parameters.date,
-          startTime: action.parameters.startTime,
-          endTime: addDurationToTime(action.parameters.startTime, action.parameters.plannedDurationMs || 3600000),
-          plannedDurationMs: action.parameters.plannedDurationMs || 3600000,
-          priority: 'medium'
-        });
-        successCount++;
-      } 
-      else if (action.type === 'DELETE_PLANNER_SESSION' && action.parameters.id) {
-        await dataStore.deletePlannerItem(action.parameters.id);
-        successCount++;
-      }
-      else if (action.type === 'CREATE_GOAL') {
-        await dataStore.createGoal({
-          title: action.parameters.title,
-          type: action.parameters.type || 'daily',
-          targetMs: action.parameters.targetMs || 3600000,
-          status: 'active',
-          priority: 'medium'
-        });
-        successCount++;
-      }
-      else if (action.type === 'START_TIMER') {
-        const mins = action.parameters.durationMs ? Math.round(action.parameters.durationMs / 60000) : undefined;
-        timerStore.setMode('countdown');
-        timerStore.start(mins);
-        successCount++;
-      }
-    } catch (e) {
-      console.error(`Failed to execute AI action: ${action.type}`, e);
-    }
-  }
-  
-  return successCount === actions.length;
-};
-
-// Quick helper missing from previous imports for the above block
-import { addDurationToTime } from './timeUtils';

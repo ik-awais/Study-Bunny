@@ -22,7 +22,7 @@ export interface AIMessage {
     summary: string;
     actions: any[];
   } | null;
-  proposalState?: 'PENDING' | 'EXECUTED' | 'CANCELLED' | 'FAILED';
+  proposalState?: 'PENDING' | 'EXECUTING' | 'EXECUTED' | 'CANCELLED' | 'FAILED';
 }
 
 export const initDB = (): Promise<IDBDatabase> => {
