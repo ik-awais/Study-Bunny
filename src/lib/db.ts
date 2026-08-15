@@ -1,63 +1,28 @@
-export interface Session {
+export interface Session { id: string; userId: string; title: string; subject: string; durationMinutes: number; actualDurationMs: number; pauseDurationMs: number; date: string; timestamp: number; mode: string; completed: boolean; goalId?: string; plannerId?: string; }
+export interface Goal { id: string; userId: string; title: string; type: 'daily' | 'weekly' | 'monthly' | 'custom'; targetMs: number; targetSessions?: number; startDate?: string; endDate?: string; status: 'active' | 'completed'; priority: 'low' | 'medium' | 'high'; }
+export interface PlannerItem { id: string; userId: string; title: string; subject: string; plannedDurationMs: number; date: string; startTime?: string; endTime?: string; priority?: 'low' | 'medium' | 'high'; goalId?: string; description?: string; color?: string; completed: boolean; }
+export interface CustomVoiceCommand { id: string; userId: string; phrase: string; aliases: string[]; actionType: 'NAVIGATE' | 'TIMER'; actionTarget: string; enabled: boolean; createdAt: number; updatedAt: number; }
+
+// 🚀 BATCH 6 AI MODELS
+export interface AIConversation {
   id: string;
   userId: string;
   title: string;
-  subject: string;
-  durationMinutes: number;
-  actualDurationMs: number;
-  pauseDurationMs: number;
-  date: string;
-  timestamp: number;
-  mode: string;
-  completed: boolean;
-  goalId?: string;
-  plannerId?: string;
-}
-
-export interface Goal {
-  id: string;
-  userId: string;
-  title: string;
-  type: 'daily' | 'weekly' | 'monthly' | 'custom';
-  targetMs: number;
-  targetSessions?: number;
-  startDate?: string;
-  endDate?: string;
-  status: 'active' | 'completed';
-  priority: 'low' | 'medium' | 'high';
-}
-
-export interface PlannerItem {
-  id: string;
-  userId: string;
-  title: string;
-  subject: string;
-  plannedDurationMs: number;
-  date: string;
-  startTime?: string;
-  endTime?: string;
-  priority?: 'low' | 'medium' | 'high';
-  goalId?: string;
-  description?: string;
-  color?: string;
-  completed: boolean;
-}
-
-export interface CustomVoiceCommand {
-  id: string;
-  userId: string;
-  phrase: string;
-  aliases: string[];
-  actionType: 'NAVIGATE' | 'TIMER';
-  actionTarget: string; // e.g. '/', '/planner', '/goals', '/stats', '/settings', '/timer' or 'START', 'PAUSE', 'RESUME', 'STOP', 'RESET'
-  enabled: boolean;
   createdAt: number;
   updatedAt: number;
 }
 
+export interface AIMessage {
+  id: string;
+  conversationId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('study-bunny-db', 4);
+    const request = indexedDB.open('study-bunny-db', 5); // 🚀 Bumped to v5
     
     request.onerror = () => reject(request.error);
     request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
@@ -68,6 +33,7 @@ export const initDB = (): Promise<IDBDatabase> => {
 
       if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
 
+      // v1-v4 Stores
       const stores = ['sessions', 'goals', 'planner', 'customCommands'];
       stores.forEach(name => {
         if (!db.objectStoreNames.contains(name)) {
@@ -76,63 +42,57 @@ export const initDB = (): Promise<IDBDatabase> => {
         }
       });
 
+      // v5 Stores (AI Chat)
+      if (!db.objectStoreNames.contains('aiConversations')) {
+        const convStore = db.createObjectStore('aiConversations', { keyPath: 'id' });
+        convStore.createIndex('userId', 'userId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('aiMessages')) {
+        const msgStore = db.createObjectStore('aiMessages', { keyPath: 'id' });
+        msgStore.createIndex('conversationId', 'conversationId', { unique: false });
+      }
+
+      // Legacy migrations
       if (oldVersion < 4 && db.objectStoreNames.contains('customCommands')) {
         const tx = (event.target as any).transaction;
         const store = tx.objectStore('customCommands');
-        if (!store.indexNames.contains('userId')) {
-          store.createIndex('userId', 'userId', { unique: false });
-        }
+        if (!store.indexNames.contains('userId')) store.createIndex('userId', 'userId', { unique: false });
       }
     };
   });
 };
 
+// ... (Keep existing recordSession, saveSettings, getSettings, getAllData exactly as they were) ...
 export const recordSession = async (session: Session): Promise<void> => {
   const db = await initDB();
   const tx = db.transaction('sessions', 'readwrite');
   tx.objectStore('sessions').put(session);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  return new Promise((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
 };
 
 export const saveSettings = async (key: string, value: any): Promise<void> => {
   const db = await initDB();
   const tx = db.transaction('settings', 'readwrite');
   tx.objectStore('settings').put(value, key);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  return new Promise((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
 };
 
 export const getSettings = async (key: string): Promise<any> => {
   const db = await initDB();
   const tx = db.transaction('settings', 'readonly');
   const req = tx.objectStore('settings').get(key);
-  return new Promise((resolve, reject) => {
-    req.onsuccess = (event) => {
-      const target = event.target as IDBRequest;
-      resolve(target.result);
-    };
-    req.onerror = () => reject(req.error);
-  });
+  return new Promise((resolve, reject) => { req.onsuccess = (event) => resolve((event.target as IDBRequest).result); req.onerror = () => reject(req.error); });
 };
 
 export const getAllData = async (): Promise<any> => {
   const db = await initDB();
-  const tx = db.transaction(['settings', 'sessions', 'goals', 'planner', 'customCommands'], 'readonly');
+  const tx = db.transaction(['settings', 'sessions', 'goals', 'planner', 'customCommands', 'aiConversations', 'aiMessages'], 'readonly');
   const data: Record<string, any> = {};
-  
-  const stores = ['settings', 'sessions', 'goals', 'planner', 'customCommands'];
+  const stores = ['settings', 'sessions', 'goals', 'planner', 'customCommands', 'aiConversations', 'aiMessages'];
   for (const storeName of stores) {
     data[storeName] = await new Promise((resolve) => {
       const req = tx.objectStore(storeName).getAll();
-      req.onsuccess = (event) => {
-        const target = event.target as IDBRequest;
-        resolve(target.result);
-      };
+      req.onsuccess = (event) => resolve((event.target as IDBRequest).result);
     });
   }
   return data;
@@ -140,8 +100,8 @@ export const getAllData = async (): Promise<any> => {
 
 export const migrateAnonymousData = async (userId: string): Promise<void> => {
   const db = await initDB();
-  const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands'], 'readwrite');
-  const stores = ['sessions', 'goals', 'planner', 'customCommands'];
+  const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands', 'aiConversations'], 'readwrite');
+  const stores = ['sessions', 'goals', 'planner', 'customCommands', 'aiConversations'];
   
   for (const storeName of stores) {
     const store = tx.objectStore(storeName);
@@ -156,7 +116,5 @@ export const migrateAnonymousData = async (userId: string): Promise<void> => {
       });
     };
   }
-  return new Promise(res => {
-    tx.oncomplete = () => res();
-  });
+  return new Promise(res => { tx.oncomplete = () => res(); });
 };

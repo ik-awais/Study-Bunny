@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { initDB } from '../lib/db';
-import type { Session, Goal, PlannerItem, CustomVoiceCommand } from '../lib/db';
+import type { Session, Goal, PlannerItem, CustomVoiceCommand, AIConversation, AIMessage } from '../lib/db';
 import { useAuthStore } from './useAuthStore';
 import { backupToDrive, restoreFromDrive } from '../lib/driveSync';
 import { useToastStore } from './useToastStore';
@@ -20,6 +20,8 @@ interface DataState {
   planner: PlannerItem[];
   history: Session[];
   customCommands: CustomVoiceCommand[];
+  aiConversations: AIConversation[];
+  currentChatMessages: AIMessage[];
 
   refreshAll: (userId: string) => Promise<void>;
   clearData: () => void;
@@ -36,6 +38,11 @@ interface DataState {
   deleteCustomCommand: (id: string) => Promise<void>;
   toggleCustomCommand: (id: string, enabled: boolean) => Promise<void>;
 
+  // AI Chat Actions
+  loadAiMessages: (conversationId: string) => Promise<void>;
+  saveAiMessage: (conversationId: string, role: 'user' | 'assistant', content: string, title?: string) => Promise<void>;
+  deleteAiConversation: (conversationId: string) => Promise<void>;
+
   syncToDrive: () => Promise<void>;
   restoreFromDriveBackup: () => Promise<void>;
 }
@@ -46,19 +53,23 @@ export const useDataStore = create<DataState>((set, get) => ({
   planner: [],
   history: [],
   customCommands: [],
+  aiConversations: [],
+  currentChatMessages: [],
 
   clearData: () => set({
     goals: [],
     planner: [],
     history: [],
     customCommands: [],
+    aiConversations: [],
+    currentChatMessages: [],
     stats: { todayMs: 0, weeklyMs: 0, totalMs: 0, completedCount: 0, avgSessionMs: 0, streak: 0 }
   }),
 
   refreshAll: async (userId: string) => {
     if (!userId) return;
     const db = await initDB();
-    const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands'], 'readonly');
+    const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands', 'aiConversations'], 'readonly');
 
     const fetchById = <T>(storeName: string) => new Promise<T[]>((resolve) => {
       const index = tx.objectStore(storeName).index('userId');
@@ -66,11 +77,12 @@ export const useDataStore = create<DataState>((set, get) => ({
       req.onsuccess = (e) => resolve((e.target as IDBRequest).result as T[]);
     });
 
-    const [goals, planner, sessions, customCommands] = await Promise.all([
+    const [goals, planner, sessions, customCommands, aiConversations] = await Promise.all([
       fetchById<Goal>('goals'),
       fetchById<PlannerItem>('planner'),
       fetchById<Session>('sessions'),
-      fetchById<CustomVoiceCommand>('customCommands')
+      fetchById<CustomVoiceCommand>('customCommands'),
+      fetchById<AIConversation>('aiConversations')
     ]);
 
     const now = new Date();
@@ -115,6 +127,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       planner,
       history: sortedHistory,
       customCommands: customCommands.sort((a, b) => b.createdAt - a.createdAt),
+      aiConversations: aiConversations.sort((a, b) => b.updatedAt - a.updatedAt),
       stats: { todayMs, weeklyMs, totalMs, completedCount, avgSessionMs, streak: currentStreak }
     });
   },
@@ -277,6 +290,75 @@ export const useDataStore = create<DataState>((set, get) => ({
     await get().refreshAll(userId);
   },
 
+  loadAiMessages: async (conversationId) => {
+    const db = await initDB();
+    const tx = db.transaction('aiMessages', 'readonly');
+    const index = tx.objectStore('aiMessages').index('conversationId');
+    const req = index.getAll(conversationId);
+    req.onsuccess = (e) => {
+      const msgs = (e.target as IDBRequest).result as AIMessage[];
+      set({ currentChatMessages: msgs.sort((a, b) => a.timestamp - b.timestamp) });
+    };
+  },
+
+  saveAiMessage: async (conversationId, role, content, title) => {
+    const userId = useAuthStore.getState().user?.id;
+    if (!userId) return;
+    
+    const db = await initDB();
+    const tx = db.transaction(['aiConversations', 'aiMessages'], 'readwrite');
+    const now = Date.now();
+
+    // Ensure conversation exists
+    const convStore = tx.objectStore('aiConversations');
+    const getReq = convStore.get(conversationId);
+    getReq.onsuccess = (e) => {
+      let conv = (e.target as IDBRequest).result as AIConversation;
+      if (!conv) {
+        conv = { id: conversationId, userId, title: title || 'New Chat', createdAt: now, updatedAt: now };
+      } else {
+        conv.updatedAt = now;
+        if (title && conv.title === 'New Chat') conv.title = title;
+      }
+      convStore.put(conv);
+    };
+
+    // Save message
+    const msg: AIMessage = { 
+      id: Date.now().toString() + Math.random().toString(36).substring(7), 
+      conversationId, 
+      role, 
+      content, 
+      timestamp: now 
+    };
+    tx.objectStore('aiMessages').put(msg);
+
+    await new Promise(res => { tx.oncomplete = res; });
+    get().refreshAll(userId);
+    await get().loadAiMessages(conversationId);
+  },
+
+  deleteAiConversation: async (conversationId) => {
+    const userId = useAuthStore.getState().user?.id;
+    if (!userId) return;
+    
+    const db = await initDB();
+    const tx = db.transaction(['aiConversations', 'aiMessages'], 'readwrite');
+    tx.objectStore('aiConversations').delete(conversationId);
+    
+    const index = tx.objectStore('aiMessages').index('conversationId');
+    const req = index.getAllKeys(conversationId);
+    req.onsuccess = (e) => {
+      const keys = (e.target as IDBRequest).result;
+      keys.forEach((k: any) => tx.objectStore('aiMessages').delete(k));
+    };
+
+    await new Promise(res => { tx.oncomplete = res; });
+    set({ currentChatMessages: [] });
+    get().refreshAll(userId);
+    useToastStore.getState().addToast('Conversation deleted', 'info');
+  },
+
   syncToDrive: async () => {
     const user = useAuthStore.getState().user;
     if (!user || !user.hasDriveAccess) return;
@@ -286,6 +368,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         planner: get().planner,
         history: get().history,
         customCommands: get().customCommands,
+        aiConversations: get().aiConversations,
         version: '2.0',
         exportedAt: Date.now(),
         userId: user.id
@@ -305,9 +388,9 @@ export const useDataStore = create<DataState>((set, get) => ({
       if (data.userId !== user.id) throw new Error('Backup identity mismatch.');
 
       const db = await initDB();
-      const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands'], 'readwrite');
+      const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands', 'aiConversations', 'aiMessages'], 'readwrite');
 
-      ['sessions', 'goals', 'planner', 'customCommands'].forEach(store => {
+      ['sessions', 'goals', 'planner', 'customCommands', 'aiConversations', 'aiMessages'].forEach(store => {
         const index = tx.objectStore(store).index('userId');
         const req = index.getAllKeys(user.id);
         req.onsuccess = (e) => {

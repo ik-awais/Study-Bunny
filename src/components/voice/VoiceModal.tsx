@@ -3,6 +3,7 @@ import { X, Mic, Settings, Sparkles, Clock, Command } from 'lucide-react';
 import { useVoiceCommand } from '../../hooks/useVoiceCommand';
 import { Card, Button } from '../ui/SharedUI';
 import { CustomCommandsTab } from './CustomCommandsTab';
+import { AIAssistantTab } from './AIAssistantTab';
 
 interface VoiceModalProps {
   isOpen: boolean;
@@ -107,15 +108,13 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
             </div>
           )}
 
-          {/* 2. Custom Commands Section (Batch 2) */}
+          {/* 2. Custom Commands Section */}
           {activeTab === 'commands' && <CustomCommandsTab />}
 
-          {/* 3. AI Assistant Placeholder (Batch 3) */}
+          {/* 3. AI Assistant Section */}
           {activeTab === 'ai' && (
-            <div className="flex flex-col items-center justify-center text-center h-full p-8 text-bunny-muted animate-in fade-in my-auto">
-              <Sparkles className="w-16 h-16 mb-4 opacity-20 text-bunny-primary" />
-              <h3 className="text-xl font-bold text-bunny-text mb-2 font-rounded">AI Study Assistant</h3>
-              <p className="text-sm max-w-xs leading-relaxed">Connect with your AI partner for advanced natural language scheduling. Coming soon.</p>
+            <div className="h-full">
+              <AIAssistantTab />
             </div>
           )}
 
