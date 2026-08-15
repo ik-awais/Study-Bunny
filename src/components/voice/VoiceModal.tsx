@@ -13,6 +13,7 @@ interface VoiceModalProps {
 export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
   const { state, toggleVoice } = useVoiceCommand();
   const [activeTab, setActiveTab] = useState<'status' | 'commands' | 'ai' | 'history'>('status');
+  const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -22,7 +23,6 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
 
   if (!isOpen) return null;
 
-  // 🚀 BATCH 7: Updated Tab Labels
   const tabs = [
     { id: 'status', label: 'Voice Status', icon: Mic },
     { id: 'commands', label: 'Bunny Commands', icon: Command },
@@ -31,36 +31,52 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
   ] as const;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" onClick={onClose}>
-      <div className="bg-bunny-cream w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-2xl border border-bunny-border overflow-hidden flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="voice-modal-title">
+    <div 
+      className={`fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center animate-in fade-in ${isMaximized ? 'p-0 sm:p-4' : 'p-4'}`} 
+      onClick={onClose}
+    >
+      <div 
+        className={`bg-bunny-cream w-full overflow-hidden flex flex-col shadow-2xl border border-bunny-border animate-in zoom-in-95 transition-all duration-300 ${
+          isMaximized ? 'h-full max-w-7xl rounded-none sm:rounded-3xl' : 'max-h-[85vh] max-w-2xl rounded-3xl'
+        }`} 
+        onClick={e => e.stopPropagation()} 
+        role="dialog" 
+        aria-modal="true"
+      >
         
-        <div className="flex justify-between items-center p-5 border-b border-bunny-border bg-white flex-shrink-0">
-          <h2 id="voice-modal-title" className="text-xl font-bold font-rounded flex items-center gap-2 text-bunny-text">
-            <Settings className="w-5 h-5 text-bunny-primary" />
-            Bunny Voice
-          </h2>
-          <button onClick={onClose} className="p-2 text-bunny-muted hover:text-bunny-error bg-bunny-cream hover:bg-red-50 rounded-full transition-colors" aria-label="Close">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        {/* Hide header and tabs if Maximized (Chat handles its own header) */}
+        {!isMaximized && (
+          <>
+            <div className="flex justify-between items-center p-5 border-b border-bunny-border bg-white flex-shrink-0">
+              <h2 id="voice-modal-title" className="text-xl font-bold font-rounded flex items-center gap-2 text-bunny-text">
+                <Settings className="w-5 h-5 text-bunny-primary" />
+                Bunny Voice
+              </h2>
+              <button onClick={onClose} className="p-2 text-bunny-muted hover:text-bunny-error bg-bunny-cream hover:bg-red-50 rounded-full transition-colors" aria-label="Close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-        <div className="flex overflow-x-auto border-b border-bunny-border bg-white px-2 hide-scrollbar flex-shrink-0">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-bold tracking-wide whitespace-nowrap transition-colors border-b-2 ${
-                activeTab === tab.id ? 'border-bunny-primary text-bunny-primary' : 'border-transparent text-bunny-muted hover:text-bunny-text hover:border-bunny-border'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
+            <div className="flex overflow-x-auto border-b border-bunny-border bg-white px-2 hide-scrollbar flex-shrink-0">
+              {tabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-bold tracking-wide whitespace-nowrap transition-colors border-b-2 ${
+                    activeTab === tab.id ? 'border-bunny-primary text-bunny-primary' : 'border-transparent text-bunny-muted hover:text-bunny-text hover:border-bunny-border'
+                  }`}
+                >
+                  <tab.icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
-        <div className="p-6 overflow-y-auto flex-1 bg-bunny-cream/50">
-          {activeTab === 'status' && (
+        {/* Content Area */}
+        <div className={`overflow-y-auto flex-1 bg-bunny-cream/50 ${isMaximized ? 'p-0' : 'p-6'}`}>
+          {activeTab === 'status' && !isMaximized && (
             <div className="space-y-6 max-w-sm mx-auto my-auto py-6">
               <Card className="flex flex-col items-center justify-center text-center p-8 bg-white border-bunny-border shadow-sm">
                 <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-5 transition-colors ${state === 'LISTENING' ? 'bg-bunny-primary text-white animate-pulse shadow-lg shadow-bunny-primary/30' : state === 'DENIED' || state === 'ERROR' ? 'bg-bunny-error text-white' : 'bg-bunny-cream text-bunny-muted'}`}>
@@ -76,9 +92,16 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
               </Button>
             </div>
           )}
-          {activeTab === 'commands' && <CustomCommandsTab />}
-          {activeTab === 'ai' && <div className="h-full"><AIAssistantTab /></div>}
-          {activeTab === 'history' && (
+          
+          {activeTab === 'commands' && !isMaximized && <CustomCommandsTab />}
+          
+          {activeTab === 'ai' && (
+            <div className="h-full">
+              <AIAssistantTab isMaximized={isMaximized} setIsMaximized={setIsMaximized} />
+            </div>
+          )}
+          
+          {activeTab === 'history' && !isMaximized && (
             <div className="flex flex-col items-center justify-center text-center h-full p-8 text-bunny-muted animate-in fade-in my-auto">
               <Clock className="w-16 h-16 mb-4 opacity-20 text-bunny-primary" />
               <h3 className="text-xl font-bold text-bunny-text mb-2 font-rounded">Voice History</h3>

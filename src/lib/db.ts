@@ -18,6 +18,11 @@ export interface AIMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  proposal?: {
+    summary: string;
+    actions: any[];
+  } | null;
+  proposalState?: 'PENDING' | 'EXECUTED' | 'CANCELLED' | 'FAILED';
 }
 
 export const initDB = (): Promise<IDBDatabase> => {

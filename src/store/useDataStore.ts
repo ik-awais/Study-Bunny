@@ -40,7 +40,8 @@ interface DataState {
 
   // AI Chat Actions
   loadAiMessages: (conversationId: string) => Promise<void>;
-  saveAiMessage: (conversationId: string, role: 'user' | 'assistant', content: string, title?: string) => Promise<void>;
+  saveAiMessage: (conversationId: string, role: 'user' | 'assistant', content: string, title?: string, proposal?: any) => Promise<void>;
+  updateAiMessage: (messageId: string, updates: Partial<AIMessage>) => Promise<void>;
   deleteAiConversation: (conversationId: string) => Promise<void>;
 
   syncToDrive: () => Promise<void>;
@@ -301,7 +302,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     };
   },
 
-  saveAiMessage: async (conversationId, role, content, title) => {
+  saveAiMessage: async (conversationId, role, content, title, proposal) => {
     const userId = useAuthStore.getState().user?.id;
     if (!userId) return;
     
@@ -323,19 +324,42 @@ export const useDataStore = create<DataState>((set, get) => ({
       convStore.put(conv);
     };
 
-    // Save message
+    // Save message with proposal support
     const msg: AIMessage = { 
       id: Date.now().toString() + Math.random().toString(36).substring(7), 
       conversationId, 
       role, 
       content, 
-      timestamp: now 
+      timestamp: now,
+      proposal: proposal || null,
+      proposalState: proposal ? 'PENDING' : undefined
     };
     tx.objectStore('aiMessages').put(msg);
 
     await new Promise(res => { tx.oncomplete = res; });
     get().refreshAll(userId);
     await get().loadAiMessages(conversationId);
+  },
+
+  updateAiMessage: async (messageId, updates) => {
+    const db = await initDB();
+    const tx = db.transaction('aiMessages', 'readwrite');
+    const store = tx.objectStore('aiMessages');
+    const req = store.get(messageId);
+
+    req.onsuccess = (event) => {
+      const msg = (event.target as IDBRequest).result as AIMessage | undefined;
+      if (msg) {
+        Object.assign(msg, updates);
+        store.put(msg);
+      }
+    };
+    
+    await new Promise(res => { tx.oncomplete = res; });
+    // Refresh current chat view
+    set(state => ({
+      currentChatMessages: state.currentChatMessages.map(m => m.id === messageId ? { ...m, ...updates } : m)
+    }));
   },
 
   deleteAiConversation: async (conversationId) => {
