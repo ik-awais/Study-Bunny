@@ -5,7 +5,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { BunnyWorld } from '../bunnies/BunnyWorld';
 import { ToastProvider } from '../ui/ToastProvider';
 import { useVoiceCommand } from '../../hooks/useVoiceCommand';
-import { VoiceConsole } from '../voice/VoiceConsole';
+import { VoiceModal } from '../voice/VoiceModal';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: Home },
@@ -19,13 +19,13 @@ const NAV_ITEMS = [
 export const MainLayout = () => {
   const { isSidebarOpen, toggleSidebar } = useAppStore();
   const location = useLocation();
-  const { state } = useVoiceCommand();
-  const [isConsoleOpen, setConsoleOpen] = useState(false);
+  const { state, toggleVoice } = useVoiceCommand();
+  const [isModalOpen, setModalOpen] = useState(false);
 
   const getMicColor = () => {
-    if (state === 'LISTENING') return 'bg-bunny-primary text-white animate-pulse shadow-lg shadow-bunny-primary/30';
-    if (state === 'DENIED' || state === 'ERROR') return 'bg-bunny-error text-white';
-    return 'bg-white text-bunny-muted hover:text-bunny-primary border border-bunny-border';
+    if (state === 'LISTENING') return 'bg-bunny-primary text-white shadow-sm';
+    if (state === 'DENIED' || state === 'ERROR') return 'bg-bunny-error text-white shadow-sm';
+    return 'bg-bunny-cream text-bunny-muted hover:bg-bunny-primary/10 hover:text-bunny-primary';
   };
 
   return (
@@ -42,9 +42,16 @@ export const MainLayout = () => {
           <h1 className="ml-4 font-rounded font-bold text-xl text-bunny-primary">Study Bunny</h1>
         </div>
         {state !== 'UNSUPPORTED' && (
-          <button onClick={() => setConsoleOpen(true)} className={`p-2 rounded-full transition-all ${getMicColor()}`}>
-            {state === 'LISTENING' ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-          </button>
+          <div className="flex items-center gap-1 bg-white p-1 rounded-full border border-bunny-border shadow-sm">
+            {/* Primary Action: Toggle Mic */}
+            <button onClick={() => toggleVoice()} className={`p-2 rounded-full transition-all ${getMicColor()}`} aria-label="Toggle Voice">
+              {state === 'LISTENING' ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+            </button>
+            {/* Secondary Action: Open Modal */}
+            <button onClick={() => setModalOpen(true)} className="p-2 text-bunny-muted hover:text-bunny-primary rounded-full transition-colors" aria-label="Voice Settings">
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
         )}
       </div>
 
@@ -76,18 +83,25 @@ export const MainLayout = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
                     <span className="text-sm font-bold text-bunny-muted">Voice Engine</span>
-                    <span className={`text-[10px] uppercase tracking-widest font-bold ${state === 'LISTENING' ? 'text-bunny-primary' : state === 'DENIED' ? 'text-bunny-error' : 'text-bunny-muted'}`}>
+                    <span className={`text-[10px] uppercase tracking-widest font-bold ${state === 'LISTENING' ? 'text-bunny-primary' : state === 'DENIED' || state === 'ERROR' ? 'text-bunny-error' : 'text-bunny-muted'}`}>
                       {state}
                     </span>
                   </div>
-                  <button onClick={() => setConsoleOpen(true)} className={`p-3 rounded-full transition-all ${getMicColor()}`} title="Open Voice Console">
-                    {state === 'LISTENING' ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-                  </button>
+                  <div className="flex items-center gap-1 bg-white p-1 rounded-full border border-bunny-border shadow-sm">
+                    {/* Primary Action: Toggle Mic */}
+                    <button onClick={() => toggleVoice()} className={`p-2 rounded-full transition-all ${getMicColor()}`} title="Toggle Voice (Ctrl+Shift+P)">
+                      {state === 'LISTENING' ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+                    </button>
+                    {/* Secondary Action: Open Modal */}
+                    <button onClick={() => setModalOpen(true)} className="p-2 text-bunny-muted hover:text-bunny-primary rounded-full transition-colors" title="Voice Settings">
+                      <Settings className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 {state === 'DENIED' && (
                   <div className="text-[10px] font-bold text-bunny-error flex gap-1 items-start bg-bunny-error/10 p-2 rounded-lg">
                     <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                    <span>Please allow microphone access in your browser URL bar.</span>
+                    <span>Please allow microphone access.</span>
                   </div>
                 )}
              </div>
@@ -101,7 +115,7 @@ export const MainLayout = () => {
         </div>
       </main>
 
-      <VoiceConsole isOpen={isConsoleOpen} onClose={() => setConsoleOpen(false)} />
+      <VoiceModal isOpen={isModalOpen} onClose={() => setModalOpen(false)} />
     </div>
   );
 };
