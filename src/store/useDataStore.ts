@@ -27,6 +27,8 @@ interface DataState {
   deleteGoal: (id: string) => Promise<void>;
   addPlannerItem: (item: Omit<PlannerItem, 'id' | 'completed' | 'userId'> & { completed?: boolean }) => Promise<void>;
   togglePlanner: (id: string, completed: boolean) => Promise<void>;
+  updatePlannerItem: (id: string, updates: Partial<PlannerItem>) => Promise<void>;
+  deletePlannerItem: (id: string) => Promise<void>;
 
   // Custom Voice Commands Actions
   createCustomCommand: (cmd: Omit<CustomVoiceCommand, 'id' | 'userId' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -165,6 +167,40 @@ export const useDataStore = create<DataState>((set, get) => ({
     };
 
     await new Promise(res => { tx.oncomplete = res; });
+    get().refreshAll(userId);
+  },
+
+  updatePlannerItem: async (id, updates) => {
+    const userId = useAuthStore.getState().user?.id;
+    if (!userId) return;
+    const db = await initDB();
+    const tx = db.transaction('planner', 'readwrite');
+    const store = tx.objectStore('planner');
+    const req = store.get(id);
+
+    req.onsuccess = (event) => {
+      const target = event.target as IDBRequest;
+      const data = target.result as PlannerItem | undefined;
+      if (data) {
+        Object.assign(data, updates);
+        store.put(data);
+      }
+    };
+
+    await new Promise(res => { tx.oncomplete = res; });
+    useToastStore.getState().addToast('Event updated successfully.', 'success');
+    get().refreshAll(userId);
+  },
+
+  deletePlannerItem: async (id) => {
+    const userId = useAuthStore.getState().user?.id;
+    if (!userId) return;
+    const db = await initDB();
+    const tx = db.transaction('planner', 'readwrite');
+    tx.objectStore('planner').delete(id);
+    
+    await new Promise(res => { tx.oncomplete = res; });
+    useToastStore.getState().addToast('Event deleted.', 'info');
     get().refreshAll(userId);
   },
 

@@ -99,3 +99,22 @@ export const formatLiveTimer = (ms: number): string => {
   }
   return `${minStr}:${secStr}`;
 };
+
+export const calculateDurationMs = (start: string, end: string): number => {
+  if (!start || !end) return 0;
+  const [sH, sM] = start.split(':').map(Number);
+  const [eH, eM] = end.split(':').map(Number);
+  let diffMins = (eH * 60 + eM) - (sH * 60 + sM);
+  if (diffMins < 0) diffMins += 24 * 60; // Handles midnight span safely
+  return diffMins * 60 * 1000;
+};
+
+export const addDurationToTime = (start: string, durationMs: number): string => {
+  if (!start) return '';
+  const [sH, sM] = start.split(':').map(Number);
+  const addMins = Math.floor(durationMs / 60000);
+  const totalMins = sH * 60 + sM + addMins;
+  const eH = Math.floor(totalMins / 60) % 24;
+  const eM = totalMins % 60;
+  return `${eH.toString().padStart(2, '0')}:${eM.toString().padStart(2, '0')}`;
+};

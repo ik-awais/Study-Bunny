@@ -1,246 +1,354 @@
-import { useState, useEffect } from 'react';
-import { Card, Button, Input} from '../components/ui/SharedUI';
-import { Calendar as CalendarIcon, Plus, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Plus, Calendar as CalendarIcon, Clock, Target, FileText, CheckCircle, Circle, Play, Edit2, Trash2, X, AlertCircle } from 'lucide-react';
 import { useDataStore } from '../store/useDataStore';
 import { useTimerStore } from '../store/useTimerStore';
-import { formatDuration } from '../lib/timeUtils';
-import { useNavigate } from 'react-router-dom';
+import { globalNavigate } from '../lib/navigationService';
+import { calculateDurationMs, addDurationToTime, formatDuration } from '../lib/timeUtils';
+import type { PlannerItem } from '../lib/db';
+import { Card, Button, Input, Select } from '../components/ui/SharedUI';
 
 export const PlannerView = () => {
-  const { planner, addPlannerItem} = useDataStore();
-  const { start } = useTimerStore();
-  const navigate = useNavigate();
+  const { planner, goals, addPlannerItem, updatePlannerItem, deletePlannerItem, togglePlanner } = useDataStore();
+  const startTimer = useTimerStore(s => s.start);
+  const setTimerMode = useTimerStore(s => s.setMode);
 
-  const [view, setView] = useState<'day' | 'week' | 'month'>('day');
-  const [baseDate, setBaseDate] = useState(new Date());
-  const [currentTime, setCurrentTime] = useState(new Date());
+  // --- UI State ---
+  const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA'));
+  const [detailEvent, setDetailEvent] = useState<PlannerItem | null>(null);
   
-  const [showModal, setShowModal] = useState(false);
-  const [newEvent, setNewEvent] = useState({ title: '', subject: '', date: new Date().toLocaleDateString('en-CA'), startTime: '09:00', durationMins: 60, priority: 'medium' });
+  // --- Form State ---
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Partial<PlannerItem>>({});
+  const [isDirty, setIsDirty] = useState(false);
+  const [formError, setFormError] = useState('');
 
-  // Update current time indicator every minute
-  useEffect(() => {
-    const interval = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(interval);
-  }, []);
+  // Auto-sort events by start time
+  const dayEvents = useMemo(() => {
+    return planner
+      .filter(p => p.date === selectedDate)
+      .sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'));
+  }, [planner, selectedDate]);
 
-  const handleAdd = () => {
-    addPlannerItem({
-      title: newEvent.title || 'Study Session',
-      subject: newEvent.subject || 'General',
-      plannedDurationMs: newEvent.durationMins * 60000,
-      date: newEvent.date,
-      startTime: newEvent.startTime,
-      priority: newEvent.priority as 'low'|'medium'|'high',
-      completed: false
+  // --- Handlers ---
+  const handleStartSession = (event: PlannerItem) => {
+    setDetailEvent(null);
+    setTimerMode('countdown');
+    const mins = Math.floor(event.plannedDurationMs / 60000);
+    startTimer(mins, {
+      title: event.title,
+      subject: event.subject,
+      plannerId: event.id
     });
-    setShowModal(false);
+    globalNavigate('/timer');
   };
 
-  const navDate = (days: number) => setBaseDate(new Date(baseDate.setDate(baseDate.getDate() + days)));
-  const navMonth = (months: number) => setBaseDate(new Date(baseDate.setMonth(baseDate.getMonth() + months)));
+  const handleDelete = (id: string) => {
+    if (window.confirm("Are you sure you want to delete this planned session? Your historical study records will not be deleted.")) {
+      deletePlannerItem(id);
+      setDetailEvent(null);
+    }
+  };
 
-  // --- CALENDAR MATH UTILS ---
-  const getWeekDays = (date: Date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Start on Monday
-    d.setDate(diff);
-    return Array.from({length: 7}, (_, i) => {
-      const copy = new Date(d);
-      copy.setDate(copy.getDate() + i);
-      return copy;
+  // --- Form Logic ---
+  const openForm = (event?: PlannerItem) => {
+    if (event) {
+      setEditingId(event.id);
+      setFormData({ ...event });
+    } else {
+      setEditingId(null);
+      setFormData({
+        title: '',
+        subject: '',
+        date: selectedDate,
+        startTime: '09:00',
+        endTime: '10:00',
+        plannedDurationMs: 60 * 60 * 1000,
+        priority: 'medium',
+        goalId: '',
+        description: '',
+        color: '#7c3aed'
+      });
+    }
+    setIsDirty(false);
+    setFormError('');
+    setDetailEvent(null);
+    setIsFormOpen(true);
+  };
+
+  const closeForm = () => {
+    if (isDirty && !window.confirm("You have unsaved changes. Discard them?")) return;
+    setIsFormOpen(false);
+  };
+
+  const handleFormChange = (updates: Partial<PlannerItem>) => {
+    setIsDirty(true);
+    setFormData(prev => {
+      const next = { ...prev, ...updates };
+      
+      // Strict Time/Duration Syncing
+      if (updates.startTime && prev.plannedDurationMs) {
+        next.endTime = addDurationToTime(updates.startTime, prev.plannedDurationMs);
+      } else if (updates.endTime && prev.startTime) {
+        next.plannedDurationMs = calculateDurationMs(prev.startTime, updates.endTime);
+      } else if (updates.plannedDurationMs && prev.startTime) {
+        next.endTime = addDurationToTime(prev.startTime, updates.plannedDurationMs);
+      }
+      
+      return next;
     });
   };
 
-  const getMonthDays = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const startOffset = (firstDay === 0 ? 6 : firstDay - 1);
+  const saveForm = async () => {
+    if (!formData.title?.trim()) return setFormError('Title is required.');
+    if (!formData.startTime) return setFormError('Start time is required.');
+    if (!formData.endTime) return setFormError('End time is required.');
+    if ((formData.plannedDurationMs || 0) <= 0) return setFormError('Duration must be greater than 0.');
+
+    if (editingId) {
+      await updatePlannerItem(editingId, formData as Partial<PlannerItem>);
+    } else {
+      await addPlannerItem(formData as Omit<PlannerItem, 'id' | 'userId'>);
+    }
     
-    const days = [];
-    for(let i = 0; i < startOffset; i++) days.push(null);
-    for(let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
-    return days;
+    setIsDirty(false);
+    setIsFormOpen(false);
   };
 
-  // --- RENDERING HELPERS ---
-  const renderTimelineGrid = () => Array.from({length: 24}).map((_, i) => (
-    <div key={i} className="flex border-b border-bunny-border/50 h-16 opacity-50 absolute w-full pointer-events-none" style={{ top: `${i * 64}px` }}>
-      <span className="w-16 text-[10px] font-bold text-bunny-muted pt-1 bg-bunny-cream/80 pr-2 text-right">{i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i-12} PM`}</span>
-    </div>
-  ));
-
-  const renderCurrentTimeLine = (matchDate: Date) => {
-    if (matchDate.toLocaleDateString('en-CA') !== currentTime.toLocaleDateString('en-CA')) return null;
-    const topOffset = (currentTime.getHours() * 64) + ((currentTime.getMinutes() / 60) * 64);
-    return (
-      <div className="absolute left-16 right-0 h-0.5 bg-bunny-primary z-20 flex items-center pointer-events-none" style={{ top: `${topOffset}px` }}>
-        <div className="w-2 h-2 rounded-full bg-bunny-primary -ml-1"></div>
-      </div>
-    );
-  };
-
-  const renderEvents = (targetDate: Date, leftOffset = '4rem') => {
-    const events = planner.filter(p => p.date === targetDate.toLocaleDateString('en-CA'));
-    return events.map(event => {
-      const [hours, mins] = (event.startTime || '00:00').split(':').map(Number);
-      const topOffset = (hours * 64) + ((mins / 60) * 64);
-      const height = Math.max((event.plannedDurationMs / 3600000) * 64, 24); // min height 24px
-
-      return (
-        <div key={event.id} 
-             onClick={() => { start(event.plannedDurationMs / 60000, { title: event.title, subject: event.subject, plannerId: event.id }); navigate('/timer'); }}
-             className={`absolute right-2 rounded-xl border p-2 flex flex-col shadow-sm cursor-pointer hover:scale-[1.02] hover:z-30 transition-all overflow-hidden
-             ${event.completed ? 'bg-bunny-cream/90 opacity-60 border-bunny-border' : 'bg-white border-l-4 border-l-bunny-primary border-bunny-border'}`} 
-             style={{ top: `${topOffset}px`, height: `${height}px`, left: leftOffset }}>
-          <span className="font-bold text-xs leading-tight truncate text-bunny-text">{event.title}</span>
-          <span className="text-[10px] font-bold text-bunny-muted truncate">{event.startTime} • {formatDuration(event.plannedDurationMs, { compact: true })}</span>
-        </div>
-      );
-    });
-  };
-
+  // --- Render ---
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in pb-10 flex flex-col h-full">
-      {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h1 className="text-3xl font-rounded font-bold flex items-center gap-3">
-          <CalendarIcon className="w-8 h-8 text-bunny-primary" /> Planner
-        </h1>
-        <div className="flex items-center gap-4 bg-bunny-card border border-bunny-border p-1 rounded-xl shadow-sm">
-          {(['day', 'week', 'month'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)} className={`px-4 py-1.5 rounded-lg text-sm font-bold capitalize transition-all ${view === v ? 'bg-bunny-primary text-white shadow-sm' : 'text-bunny-muted hover:text-bunny-text'}`}>
-              {v}
-            </button>
-          ))}
+    <div className="space-y-6 animate-in fade-in pb-20">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold font-rounded text-bunny-text">Study Planner</h1>
+          <p className="text-bunny-muted">Organize your sessions and sync directly to the timer.</p>
+        </div>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <Input 
+            type="date" 
+            value={selectedDate} 
+            onChange={e => setSelectedDate(e.target.value)}
+            className="w-full sm:w-auto font-bold text-bunny-primary"
+          />
+          <Button onClick={() => openForm()} className="gap-2 flex-shrink-0">
+            <Plus className="w-5 h-5" /> New Event
+          </Button>
         </div>
       </div>
 
-      <div className="flex items-center justify-between bg-bunny-card p-3 rounded-2xl border border-bunny-border shadow-sm">
-        <div className="flex gap-2">
-          <Button variant="ghost" onClick={() => view === 'month' ? navMonth(-1) : navDate(view === 'week' ? -7 : -1)}><ChevronLeft className="w-5 h-5"/></Button>
-          <Button variant="outline" onClick={() => setBaseDate(new Date())} className="text-xs">Today</Button>
-          <Button variant="ghost" onClick={() => view === 'month' ? navMonth(1) : navDate(view === 'week' ? 7 : 1)}><ChevronRight className="w-5 h-5"/></Button>
-        </div>
-        <span className="font-bold text-lg text-bunny-text">
-          {view === 'month' ? baseDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 
-           view === 'week' ? `Week of ${getWeekDays(baseDate)[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` :
-           baseDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-        </span>
-        <Button onClick={() => setShowModal(true)} className="gap-2"><Plus className="w-4 h-4" /> <span className="hidden md:inline">Schedule</span></Button>
-      </div>
-
-      {/* CALENDAR VIEWS */}
-      <Card className="flex-1 p-0 overflow-hidden bg-bunny-cream/30 flex flex-col border-bunny-border shadow-sm">
-        
-        {/* DAY VIEW */}
-        {view === 'day' && (
-          <div className="relative flex-1 overflow-y-auto min-h-[60vh]">
-            <div className="absolute inset-0 h-[1536px]"> {/* 24 * 64px */}
-              {renderTimelineGrid()}
-              {renderCurrentTimeLine(baseDate)}
-              {renderEvents(baseDate)}
-            </div>
+      {/* Main Timeline View */}
+      <Card className="p-4 sm:p-6 bg-white border-bunny-border">
+        {dayEvents.length === 0 ? (
+          <div className="text-center py-16">
+            <CalendarIcon className="w-16 h-16 text-bunny-primary/20 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-bunny-text mb-2">No events scheduled</h3>
+            <p className="text-bunny-muted mb-6">Your day is entirely clear. Ready to plan a session?</p>
+            <Button onClick={() => openForm()} variant="outline">Schedule a Session</Button>
           </div>
-        )}
-
-        {/* WEEK VIEW */}
-        {view === 'week' && (
-          <div className="flex flex-col h-full min-h-[60vh]">
-            <div className="grid grid-cols-7 border-b border-bunny-border bg-bunny-card sticky top-0 z-20">
-              {getWeekDays(baseDate).map((day, i) => (
-                <div key={i} className={`p-2 text-center border-r border-bunny-border/50 ${day.toLocaleDateString() === new Date().toLocaleDateString() ? 'bg-bunny-primary/10 text-bunny-primary' : ''}`}>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-bunny-muted">{day.toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                  <div className="text-xl font-bold">{day.getDate()}</div>
+        ) : (
+          <div className="space-y-3">
+            {dayEvents.map(event => (
+              <div 
+                key={event.id}
+                onClick={() => setDetailEvent(event)}
+                className={`group flex flex-col sm:flex-row gap-4 p-4 rounded-2xl border-2 transition-all cursor-pointer hover:shadow-md ${
+                  event.completed ? 'bg-bunny-cream/50 border-transparent opacity-70' : 'bg-white border-bunny-border hover:border-bunny-primary/40'
+                }`}
+                style={{ borderLeftColor: event.completed ? 'transparent' : event.color || '#7c3aed', borderLeftWidth: '6px' }}
+              >
+                {/* Time Column */}
+                <div className="flex sm:flex-col justify-between sm:justify-start items-center sm:items-end w-full sm:w-24 flex-shrink-0 sm:border-r border-bunny-border/50 sm:pr-4">
+                  <span className="font-bold text-bunny-text">{event.startTime}</span>
+                  <span className="text-xs text-bunny-muted font-medium">{event.endTime}</span>
                 </div>
-              ))}
-            </div>
-            <div className="relative flex-1 overflow-y-auto overflow-x-hidden">
-               <div className="absolute inset-0 h-[1536px] min-w-[700px]">
-                 {renderTimelineGrid()}
-                 <div className="grid grid-cols-7 absolute inset-0 left-16 right-0">
-                   {getWeekDays(baseDate).map((day, i) => (
-                     <div key={i} className="relative border-r border-bunny-border/30 h-full">
-                       {renderCurrentTimeLine(day)}
-                       {renderEvents(day, '4px')}
-                     </div>
-                   ))}
-                 </div>
-               </div>
-            </div>
-          </div>
-        )}
 
-        {/* MONTH VIEW */}
-        {view === 'month' && (
-          <div className="flex flex-col h-full min-h-[60vh]">
-            <div className="grid grid-cols-7 border-b border-bunny-border bg-bunny-card">
-              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
-                <div key={d} className="p-2 text-center text-xs font-bold uppercase text-bunny-muted border-r border-bunny-border/50">{d}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 flex-1 auto-rows-fr">
-              {getMonthDays(baseDate).map((day, i) => (
-                <div key={i} onClick={() => { if(day) { setBaseDate(day); setView('day'); } }} 
-                     className={`border-r border-b border-bunny-border/50 p-1 md:p-2 min-h-[100px] transition-colors ${day ? 'hover:bg-bunny-card cursor-pointer' : 'bg-bunny-border/10'} ${day?.toLocaleDateString() === new Date().toLocaleDateString() ? 'bg-bunny-primary/5' : ''}`}>
-                  {day && (
-                    <>
-                      <div className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full mb-1 ${day.toLocaleDateString() === new Date().toLocaleDateString() ? 'bg-bunny-primary text-white' : 'text-bunny-text'}`}>
-                        {day.getDate()}
-                      </div>
-                      <div className="space-y-1 overflow-hidden">
-                        {planner.filter(p => p.date === day.toLocaleDateString('en-CA')).slice(0, 3).map(event => (
-                          <div key={event.id} className={`text-[10px] p-1 rounded truncate font-bold ${event.completed ? 'bg-bunny-border text-bunny-muted line-through' : 'bg-bunny-primary/10 text-bunny-primary'}`}>
-                            {event.startTime} {event.title}
-                          </div>
-                        ))}
-                        {planner.filter(p => p.date === day.toLocaleDateString('en-CA')).length > 3 && (
-                          <div className="text-[10px] font-bold text-bunny-muted pl-1">+ more</div>
-                        )}
-                      </div>
-                    </>
+                {/* Content Column */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className={`font-bold text-lg truncate ${event.completed ? 'line-through text-bunny-muted' : 'text-bunny-text'}`}>
+                      {event.title}
+                    </h4>
+                    {event.priority === 'high' && !event.completed && (
+                      <span className="bg-red-100 text-red-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">High Priority</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-bunny-muted font-medium mb-3">{event.subject}</p>
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <span className="flex items-center gap-1 text-bunny-muted bg-bunny-cream px-2 py-1 rounded-md">
+                      <Clock className="w-3.5 h-3.5" /> {formatDuration(event.plannedDurationMs, { compact: false })}
+                    </span>
+                    {event.goalId && (
+                      <span className="flex items-center gap-1 text-bunny-primary bg-bunny-primary/10 px-2 py-1 rounded-md">
+                        <Target className="w-3.5 h-3.5" /> Linked to Goal
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quick Actions (Desktop Hover) */}
+                <div className="hidden sm:flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-2">
+                  {!event.completed && (
+                    <Button onClick={(e) => { e.stopPropagation(); handleStartSession(event); }} className="py-2 px-3 text-xs gap-1">
+                      <Play className="w-3.5 h-3.5" /> Start
+                    </Button>
                   )}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); togglePlanner(event.id, !event.completed); }}
+                    className="p-2 text-bunny-muted hover:text-green-600 bg-bunny-cream rounded-xl"
+                  >
+                    <CheckCircle className="w-5 h-5" />
+                  </button>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         )}
       </Card>
 
-      {/* Creation Modal (Remains heavily intact) */}
-      {showModal && (
-        <div className="fixed inset-0 z-[100] bg-bunny-text/20 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <Card className="w-full max-w-md animate-in zoom-in-95 shadow-xl border-bunny-border">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Schedule Session</h2>
-              <button onClick={() => setShowModal(false)} className="text-bunny-muted hover:text-bunny-text"><X className="w-5 h-5"/></button>
+      {/* --- EVENT DETAILS MODAL --- */}
+      {detailEvent && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" onClick={() => setDetailEvent(null)}>
+          <Card className="w-full max-w-md bg-white border-bunny-border shadow-2xl overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-bunny-border flex justify-between items-start" style={{ borderTop: `6px solid ${detailEvent.color || '#7c3aed'}` }}>
+              <div>
+                <h2 className="text-2xl font-bold font-rounded text-bunny-text mb-1">{detailEvent.title}</h2>
+                <p className="text-bunny-muted font-medium">{detailEvent.subject}</p>
+              </div>
+              <button onClick={() => setDetailEvent(null)} className="p-1 text-bunny-muted hover:bg-bunny-cream rounded-full"><X className="w-5 h-5" /></button>
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-bunny-muted uppercase ml-1">Title</label>
-                <Input placeholder="What are you studying?" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
+            
+            <div className="p-6 space-y-5 bg-bunny-cream/30">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><CalendarIcon className="w-5 h-5" /></div>
+                  <div><p className="text-[10px] uppercase font-bold text-bunny-muted">Date</p><p className="font-bold text-sm">{new Date(detailEvent.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric'})}</p></div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center"><Clock className="w-5 h-5" /></div>
+                  <div><p className="text-[10px] uppercase font-bold text-bunny-muted">Time</p><p className="font-bold text-sm">{detailEvent.startTime} - {detailEvent.endTime}</p></div>
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-bold text-bunny-muted uppercase ml-1">Date</label>
-                <Input type="date" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
+              
+              {detailEvent.goalId && (
+                <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-bunny-border">
+                  <Target className="w-5 h-5 text-bunny-primary" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] uppercase font-bold text-bunny-muted">Connected Goal</p>
+                    <p className="font-bold text-sm truncate">{goals.find(g => g.id === detailEvent.goalId)?.title || 'Unknown Goal'}</p>
+                  </div>
+                </div>
+              )}
+              
+              {detailEvent.description && (
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-bunny-muted flex items-center gap-1 mb-1"><FileText className="w-3 h-3" /> Notes</p>
+                  <p className="text-sm text-bunny-text bg-white p-3 rounded-xl border border-bunny-border whitespace-pre-wrap">{detailEvent.description}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-white border-t border-bunny-border flex flex-wrap gap-2">
+              <Button onClick={() => handleStartSession(detailEvent)} className="flex-1 py-3 gap-2 shadow-md"><Play className="w-4 h-4" /> Start Timer</Button>
+              <Button onClick={() => { setDetailEvent(null); togglePlanner(detailEvent.id, !detailEvent.completed); }} variant="outline" className={`flex-1 py-3 gap-2 border-2 ${detailEvent.completed ? 'text-bunny-muted' : 'text-green-600 border-green-200 hover:bg-green-50'}`}>
+                {detailEvent.completed ? <Circle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />} {detailEvent.completed ? 'Mark Incomplete' : 'Complete'}
+              </Button>
+              <div className="w-full flex gap-2 mt-1">
+                <Button onClick={() => openForm(detailEvent)} variant="outline" className="flex-1 text-xs py-2"><Edit2 className="w-3.5 h-3.5 mr-1" /> Edit</Button>
+                <Button onClick={() => handleDelete(detailEvent.id)} variant="outline" className="flex-1 text-xs py-2 text-bunny-error hover:bg-red-50 border-red-100"><Trash2 className="w-3.5 h-3.5 mr-1" /> Delete</Button>
               </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* --- CREATE / EDIT FORM MODAL --- */}
+      {isFormOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" onClick={closeForm}>
+          <Card className="w-full max-w-lg bg-white border-bunny-border shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-bunny-border flex justify-between items-center bg-bunny-cream/30">
+              <h2 className="text-xl font-bold font-rounded text-bunny-text">{editingId ? 'Edit Session' : 'Schedule Session'}</h2>
+              <button onClick={closeForm} className="p-1 text-bunny-muted hover:bg-bunny-border rounded-full"><X className="w-5 h-5" /></button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              {formError && (
+                <div className="p-3 bg-red-50 text-red-700 text-xs font-bold rounded-xl flex items-center gap-2 border border-red-200">
+                  <AlertCircle className="w-4 h-4" /> {formError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="text-[10px] font-bold uppercase text-bunny-muted ml-1 mb-1 block">Title *</label>
+                  <Input value={formData.title} onChange={e => handleFormChange({ title: e.target.value })} placeholder="e.g. Calculus Integration" />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="text-[10px] font-bold uppercase text-bunny-muted ml-1 mb-1 block">Subject</label>
+                  <Input value={formData.subject} onChange={e => handleFormChange({ subject: e.target.value })} placeholder="e.g. Mathematics" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 p-4 bg-bunny-cream/50 rounded-2xl border border-bunny-border">
+                <div className="col-span-3">
+                  <label className="text-[10px] font-bold uppercase text-bunny-muted ml-1 mb-1 block">Date</label>
+                  <Input type="date" value={formData.date} onChange={e => handleFormChange({ date: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-bunny-muted ml-1 mb-1 block">Start Time *</label>
+                  <Input type="time" value={formData.startTime} onChange={e => handleFormChange({ startTime: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-bunny-muted ml-1 mb-1 block">End Time *</label>
+                  <Input type="time" value={formData.endTime} onChange={e => handleFormChange({ endTime: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-bunny-muted ml-1 mb-1 block">Duration</label>
+                  <Select 
+                    value={formData.plannedDurationMs} 
+                    onChange={e => handleFormChange({ plannedDurationMs: Number(e.target.value) })}
+                    className="font-bold text-bunny-primary"
+                  >
+                    {[15, 25, 30, 45, 60, 90, 120, 180, 240].map(mins => (
+                      <option key={mins} value={mins * 60000}>{mins} min</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-bunny-muted uppercase ml-1">Start Time</label>
-                  <Input type="time" value={newEvent.startTime} onChange={e => setNewEvent({...newEvent, startTime: e.target.value})} />
+                  <label className="text-[10px] font-bold uppercase text-bunny-muted ml-1 mb-1 block">Priority</label>
+                  <Select value={formData.priority} onChange={e => handleFormChange({ priority: e.target.value as any })}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </Select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-bunny-muted uppercase ml-1">Duration (mins)</label>
-                  <Input type="number" min="1" value={newEvent.durationMins} onChange={e => setNewEvent({...newEvent, durationMins: Number(e.target.value)})} />
+                  <label className="text-[10px] font-bold uppercase text-bunny-muted ml-1 mb-1 block">Connect to Goal</label>
+                  <Select value={formData.goalId || ''} onChange={e => handleFormChange({ goalId: e.target.value })}>
+                    <option value="">None</option>
+                    {goals.filter(g => g.status === 'active').map(g => (
+                      <option key={g.id} value={g.id}>{g.title}</option>
+                    ))}
+                  </Select>
                 </div>
               </div>
-              <div className="flex gap-3 pt-4">
-                <Button variant="ghost" onClick={() => setShowModal(false)} className="flex-1">Cancel</Button>
-                <Button onClick={handleAdd} className="flex-1 shadow-md">Add to Calendar</Button>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase text-bunny-muted ml-1 mb-1 block">Notes / Description</label>
+                <textarea 
+                  value={formData.description || ''} 
+                  onChange={e => handleFormChange({ description: e.target.value })} 
+                  className="w-full bg-white border border-bunny-border rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-bunny-primary/20 resize-none h-24"
+                  placeholder="Pages to read, specific topics, etc."
+                />
               </div>
+            </div>
+
+            <div className="p-5 border-t border-bunny-border flex gap-3 bg-white">
+              <Button variant="ghost" onClick={closeForm} className="flex-1">Cancel</Button>
+              <Button onClick={saveForm} className="flex-1 shadow-md">{editingId ? 'Save Changes' : 'Schedule Session'}</Button>
             </div>
           </Card>
         </div>
