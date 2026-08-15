@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X, Mic, Settings, Sparkles, Clock, Command } from 'lucide-react';
 import { useVoiceCommand } from '../../hooks/useVoiceCommand';
 import { Card, Button } from '../ui/SharedUI';
+import { CustomCommandsTab } from './CustomCommandsTab';
 
 interface VoiceModalProps {
   isOpen: boolean;
@@ -12,7 +13,6 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
   const { state, toggleVoice } = useVoiceCommand();
   const [activeTab, setActiveTab] = useState<'status' | 'commands' | 'ai' | 'history'>('status');
 
-  // Accessible Escape-to-close
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -36,14 +36,14 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
       onClick={onClose}
     >
       <div 
-        className="bg-bunny-cream w-full max-w-xl rounded-3xl shadow-2xl border border-bunny-border overflow-hidden flex flex-col animate-in zoom-in-95"
-        onClick={e => e.stopPropagation()} // Prevent click-outside from closing when clicking inside modal
+        className="bg-bunny-cream w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-2xl border border-bunny-border overflow-hidden flex flex-col animate-in zoom-in-95"
+        onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="voice-modal-title"
       >
         {/* Header */}
-        <div className="flex justify-between items-center p-5 border-b border-bunny-border bg-white">
+        <div className="flex justify-between items-center p-5 border-b border-bunny-border bg-white flex-shrink-0">
           <h2 id="voice-modal-title" className="text-xl font-bold font-rounded flex items-center gap-2 text-bunny-text">
             <Settings className="w-5 h-5 text-bunny-primary" />
             Voice Management
@@ -58,7 +58,7 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex overflow-x-auto border-b border-bunny-border bg-white px-2 hide-scrollbar">
+        <div className="flex overflow-x-auto border-b border-bunny-border bg-white px-2 hide-scrollbar flex-shrink-0">
           {tabs.map(tab => (
             <button
               key={tab.id}
@@ -76,11 +76,11 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
         </div>
 
         {/* Content Area */}
-        <div className="p-6 min-h-[320px] bg-bunny-cream/50">
+        <div className="p-6 overflow-y-auto flex-1 bg-bunny-cream/50">
           
           {/* 1. Voice Status Panel */}
           {activeTab === 'status' && (
-            <div className="space-y-6 max-w-sm mx-auto">
+            <div className="space-y-6 max-w-sm mx-auto my-auto py-6">
               <Card className="flex flex-col items-center justify-center text-center p-8 bg-white border-bunny-border shadow-sm">
                 <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-5 transition-colors ${
                   state === 'LISTENING' ? 'bg-bunny-primary text-white animate-pulse shadow-lg shadow-bunny-primary/30' : 
@@ -107,18 +107,12 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
             </div>
           )}
 
-          {/* 2. Custom Commands Placeholder */}
-          {activeTab === 'commands' && (
-            <div className="flex flex-col items-center justify-center text-center h-full p-8 text-bunny-muted animate-in fade-in">
-              <Command className="w-16 h-16 mb-4 opacity-20 text-bunny-primary" />
-              <h3 className="text-xl font-bold text-bunny-text mb-2 font-rounded">Custom Commands</h3>
-              <p className="text-sm max-w-xs leading-relaxed">Map your own voice phrases to specific actions. This feature is coming in the next batch.</p>
-            </div>
-          )}
+          {/* 2. Custom Commands Section (Batch 2) */}
+          {activeTab === 'commands' && <CustomCommandsTab />}
 
-          {/* 3. AI Assistant Placeholder */}
+          {/* 3. AI Assistant Placeholder (Batch 3) */}
           {activeTab === 'ai' && (
-            <div className="flex flex-col items-center justify-center text-center h-full p-8 text-bunny-muted animate-in fade-in">
+            <div className="flex flex-col items-center justify-center text-center h-full p-8 text-bunny-muted animate-in fade-in my-auto">
               <Sparkles className="w-16 h-16 mb-4 opacity-20 text-bunny-primary" />
               <h3 className="text-xl font-bold text-bunny-text mb-2 font-rounded">AI Study Assistant</h3>
               <p className="text-sm max-w-xs leading-relaxed">Connect with your AI partner for advanced natural language scheduling. Coming soon.</p>
@@ -127,7 +121,7 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
 
           {/* 4. History Placeholder */}
           {activeTab === 'history' && (
-            <div className="flex flex-col items-center justify-center text-center h-full p-8 text-bunny-muted animate-in fade-in">
+            <div className="flex flex-col items-center justify-center text-center h-full p-8 text-bunny-muted animate-in fade-in my-auto">
               <Clock className="w-16 h-16 mb-4 opacity-20 text-bunny-primary" />
               <h3 className="text-xl font-bold text-bunny-text mb-2 font-rounded">Voice History</h3>
               <p className="text-sm max-w-xs leading-relaxed">Review a persistent log of your recent voice commands and transcriptions. Coming soon.</p>

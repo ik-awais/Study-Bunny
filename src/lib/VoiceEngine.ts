@@ -1,8 +1,12 @@
-import { useTimerStore } from '../store/useTimerStore';
 import { useToastStore } from '../store/useToastStore';
 import { useDataStore } from '../store/useDataStore';
+import { matchAndExecute } from './CommandRegistry';
+
 declare global {
-  interface Window { SpeechRecognition: any; webkitSpeechRecognition: any; }
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
 }
 
 export type VoiceState = 'OFF' | 'STARTING' | 'LISTENING' | 'RECOVERING' | 'DENIED' | 'UNSUPPORTED' | 'ERROR';
@@ -38,7 +42,7 @@ class VoiceEngineController {
 
       this.recognition.onstart = () => {
         this.state = 'LISTENING';
-        this.backoff = 500; // Reset backoff on success
+        this.backoff = 500;
         this.notify();
       };
 
@@ -50,7 +54,9 @@ class VoiceEngineController {
 
   public subscribe(listener: () => void) {
     this.listeners.push(listener);
-    return () => { this.listeners = this.listeners.filter(l => l !== listener); };
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== listener);
+    };
   }
 
   private notify() {
@@ -68,7 +74,9 @@ class VoiceEngineController {
     } else {
       this.state = 'OFF';
       clearTimeout(this.restartTimeout);
-      try { this.recognition.abort(); } catch(e) {}
+      try {
+        this.recognition.abort();
+      } catch (e) {}
       this.notify();
     }
   }
@@ -81,7 +89,7 @@ class VoiceEngineController {
       this.recognition.start();
     } catch (e) {
       this.state = 'RECOVERING';
-      this.handleEnd(); // Trigger backoff
+      this.handleEnd();
     }
   }
 
@@ -90,13 +98,12 @@ class VoiceEngineController {
     this.state = 'RECOVERING';
     this.notify();
     
-    // 🚀 CONTROLLED BACKOFF RECOVERY - No Infinite Loops
     clearTimeout(this.restartTimeout);
     this.restartTimeout = setTimeout(() => {
       if (this.isEnabled) this.startSafe();
     }, this.backoff);
     
-    this.backoff = Math.min(this.backoff * 1.5, 5000); 
+    this.backoff = Math.min(this.backoff * 1.5, 5000);
   }
 
   private handleError(e: any) {
@@ -106,72 +113,32 @@ class VoiceEngineController {
       useToastStore.getState().addToast('Microphone access denied.', 'error');
       this.notify();
     }
-    // no-speech and network errors are silently caught by onend and cleanly recovered.
   }
 
-  private async handleResult(event: any) {
+  private handleResult(event: any) {
     let finalTranscript = '';
     for (let i = event.resultIndex; i < event.results.length; ++i) {
-      if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + ' ';
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript + ' ';
+      }
     }
     const text = finalTranscript.trim();
     if (!text) return;
 
-    // 1. Check Custom Commands First
     const customCommands = useDataStore.getState().customCommands || [];
-    const customMatch = customCommands.find(c => c.enabled && text.toLowerCase().includes(c.phrase.toLowerCase()));
-    if (customMatch) {
-      this.executeAction(customMatch.action, text);
-      return;
-    }
+    const outcome = matchAndExecute(text, customCommands);
 
-    // 2. Deterministic Local Parsing
-    const lower = text.toLowerCase();
-    if (lower.match(/(start|begin|let's).*(timer|study)/)) return this.executeAction('START_TIMER', text);
-    if (lower.match(/(pause|hold).*(timer|session)|take a break/)) return this.executeAction('PAUSE_TIMER', text);
-    if (lower.match(/(resume|continue).*(timer|study)/)) return this.executeAction('RESUME_TIMER', text);
-    if (lower.match(/(stop|end).*(timer|session)/)) return this.executeAction('STOP_TIMER', text);
-
-    // 3. Optional AI Fallback
-    this.log(text, 'PROCESSING', 'Passing to AI...');
-    try {
-      const res = await fetch('/api/voice/interpret', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript: text })
-      });
-      const data = await res.json();
-      if (data.confidence !== 'low') {
-        this.executeAction(data.intent, text, data.parameters);
-      } else {
-        this.log(text, 'UNKNOWN', 'I didn\'t understand that.');
-      }
-    } catch (e) {
-      this.log(text, 'ERROR', 'AI Interpretation failed.');
-    }
+    this.log(text, outcome.intent, outcome.action);
   }
 
-  private executeAction(intent: string, transcript: string, params?: any) {
-    const { start, pause, resume, stop, setMode } = useTimerStore.getState();
-    const { addToast } = useToastStore.getState();
-    let actionStr = 'Executed';
-
-    switch (intent) {
-      case 'START_TIMER':
-        if (params?.duration) { setMode('countdown'); start(params.duration); actionStr = `Started ${params.duration}m timer`; }
-        else { start(); actionStr = 'Started timer'; }
-        addToast(actionStr, 'success');
-        break;
-      case 'PAUSE_TIMER': pause(); actionStr = 'Paused timer'; break;
-      case 'RESUME_TIMER': resume(); actionStr = 'Resumed timer'; break;
-      case 'STOP_TIMER': stop(); actionStr = 'Stopped session'; break;
-      case 'OPEN_PLANNER': window.location.hash = '/planner'; actionStr = 'Navigated to Planner'; break;
-    }
-    this.log(transcript, intent, actionStr);
-  }
-
-  private log(transcript: string, intent: string, action: string) {
-    this.history.unshift({ id: Date.now().toString(), time: new Date(), transcript, intent, action });
+  public log(transcript: string, intent: string, action: string) {
+    this.history.unshift({
+      id: Date.now().toString(),
+      time: new Date(),
+      transcript,
+      intent,
+      action
+    });
     if (this.history.length > 50) this.history.pop();
     this.notify();
   }

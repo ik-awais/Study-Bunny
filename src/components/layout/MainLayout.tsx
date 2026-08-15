@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Clock, Calendar, BarChart, Settings, Menu, Target, Mic, MicOff, AlertCircle } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { BunnyWorld } from '../bunnies/BunnyWorld';
 import { ToastProvider } from '../ui/ToastProvider';
 import { useVoiceCommand } from '../../hooks/useVoiceCommand';
 import { VoiceModal } from '../voice/VoiceModal';
+import { setGlobalNavigator } from '../../lib/navigationService';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: Home },
@@ -19,8 +20,13 @@ const NAV_ITEMS = [
 export const MainLayout = () => {
   const { isSidebarOpen, toggleSidebar } = useAppStore();
   const location = useLocation();
+  const navigate = useNavigate();
   const { state, toggleVoice } = useVoiceCommand();
   const [isModalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    setGlobalNavigator(navigate);
+  }, [navigate]);
 
   const getMicColor = () => {
     if (state === 'LISTENING') return 'bg-bunny-primary text-white shadow-sm';
@@ -43,11 +49,9 @@ export const MainLayout = () => {
         </div>
         {state !== 'UNSUPPORTED' && (
           <div className="flex items-center gap-1 bg-white p-1 rounded-full border border-bunny-border shadow-sm">
-            {/* Primary Action: Toggle Mic */}
             <button onClick={() => toggleVoice()} className={`p-2 rounded-full transition-all ${getMicColor()}`} aria-label="Toggle Voice">
               {state === 'LISTENING' ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
             </button>
-            {/* Secondary Action: Open Modal */}
             <button onClick={() => setModalOpen(true)} className="p-2 text-bunny-muted hover:text-bunny-primary rounded-full transition-colors" aria-label="Voice Settings">
               <Settings className="w-4 h-4" />
             </button>
@@ -88,11 +92,9 @@ export const MainLayout = () => {
                     </span>
                   </div>
                   <div className="flex items-center gap-1 bg-white p-1 rounded-full border border-bunny-border shadow-sm">
-                    {/* Primary Action: Toggle Mic */}
                     <button onClick={() => toggleVoice()} className={`p-2 rounded-full transition-all ${getMicColor()}`} title="Toggle Voice (Ctrl+Shift+P)">
                       {state === 'LISTENING' ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
                     </button>
-                    {/* Secondary Action: Open Modal */}
                     <button onClick={() => setModalOpen(true)} className="p-2 text-bunny-muted hover:text-bunny-primary rounded-full transition-colors" title="Voice Settings">
                       <Settings className="w-4 h-4" />
                     </button>

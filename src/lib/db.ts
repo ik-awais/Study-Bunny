@@ -43,92 +43,47 @@ export interface PlannerItem {
   completed: boolean;
 }
 
-export interface CustomCommand {
+export interface CustomVoiceCommand {
   id: string;
   userId: string;
   phrase: string;
-  action: 'OPEN_PLANNER' | 'OPEN_GOALS' | 'OPEN_STATS' | 'START_TIMER';
+  aliases: string[];
+  actionType: 'NAVIGATE' | 'TIMER';
+  actionTarget: string; // e.g. '/', '/planner', '/goals', '/stats', '/settings', '/timer' or 'START', 'PAUSE', 'RESUME', 'STOP', 'RESET'
   enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('study-bunny-db', 4); // 🚀 Bumped to v4
+    const request = indexedDB.open('study-bunny-db', 4);
     
     request.onerror = () => reject(request.error);
-    request.onsuccess = (event) => {
-      const target = event.target as IDBOpenDBRequest;
-      resolve(target.result);
-    };
+    request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
     
     request.onupgradeneeded = (event) => {
-      const target = event.target as IDBOpenDBRequest;
-      const db = target.result;
+      const db = (event.target as IDBOpenDBRequest).result;
       const oldVersion = event.oldVersion;
 
-      // v1/v2 Stores
       if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
-      
-      let sessionStore = db.objectStoreNames.contains('sessions') 
-        ? target.transaction!.objectStore('sessions') 
-        : db.createObjectStore('sessions', { keyPath: 'id' });
-      
-      let goalStore = db.objectStoreNames.contains('goals') 
-        ? target.transaction!.objectStore('goals') 
-        : db.createObjectStore('goals', { keyPath: 'id' });
-      
-      let plannerStore = db.objectStoreNames.contains('planner') 
-        ? target.transaction!.objectStore('planner') 
-        : db.createObjectStore('planner', { keyPath: 'id' });
-      
-      let customCommandsStore = db.objectStoreNames.contains('customCommands') 
-        ? target.transaction!.objectStore('customCommands') 
-        : db.createObjectStore('customCommands', { keyPath: 'id' });
 
-      // v3 Upgrades: Data Isolation Indices
-      if (oldVersion < 3) {
-        if (!sessionStore.indexNames.contains('userId')) {
-          sessionStore.createIndex('userId', 'userId', { unique: false });
-        }
-        if (!goalStore.indexNames.contains('userId')) {
-          goalStore.createIndex('userId', 'userId', { unique: false });
-        }
-        if (!plannerStore.indexNames.contains('userId')) {
-          plannerStore.createIndex('userId', 'userId', { unique: false });
-        }
-      }
-      
-      // v4 Upgrades: Custom Commands
-      if (oldVersion < 4) {
-        if (!customCommandsStore.indexNames.contains('userId')) {
-          customCommandsStore.createIndex('userId', 'userId', { unique: false });
-        }
-      }
-    };
-  });
-};
-
-export const migrateAnonymousData = async (userId: string): Promise<void> => {
-  const db = await initDB();
-  const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands'], 'readwrite');
-  const stores = ['sessions', 'goals', 'planner', 'customCommands'];
-  
-  for (const storeName of stores) {
-    const store = tx.objectStore(storeName);
-    const req = store.getAll();
-    req.onsuccess = (e) => {
-      const target = e.target as IDBRequest;
-      const records = target.result;
-      records.forEach((record: any) => {
-        if (!record.userId) {
-          record.userId = userId;
-          store.put(record);
+      const stores = ['sessions', 'goals', 'planner', 'customCommands'];
+      stores.forEach(name => {
+        if (!db.objectStoreNames.contains(name)) {
+          const store = db.createObjectStore(name, { keyPath: 'id' });
+          store.createIndex('userId', 'userId', { unique: false });
         }
       });
+
+      if (oldVersion < 4 && db.objectStoreNames.contains('customCommands')) {
+        const tx = (event.target as any).transaction;
+        const store = tx.objectStore('customCommands');
+        if (!store.indexNames.contains('userId')) {
+          store.createIndex('userId', 'userId', { unique: false });
+        }
+      }
     };
-  }
-  return new Promise((resolve) => {
-    tx.oncomplete = () => resolve();
   });
 };
 
@@ -141,8 +96,6 @@ export const recordSession = async (session: Session): Promise<void> => {
     tx.onerror = () => reject(tx.error);
   });
 };
-
-// --- RESTORED HELPER FUNCTIONS ---
 
 export const saveSettings = async (key: string, value: any): Promise<void> => {
   const db = await initDB();
@@ -173,7 +126,6 @@ export const getAllData = async (): Promise<any> => {
   const data: Record<string, any> = {};
   
   const stores = ['settings', 'sessions', 'goals', 'planner', 'customCommands'];
-  
   for (const storeName of stores) {
     data[storeName] = await new Promise((resolve) => {
       const req = tx.objectStore(storeName).getAll();
@@ -186,105 +138,25 @@ export const getAllData = async (): Promise<any> => {
   return data;
 };
 
-export const updatePlannerItem = async (item: PlannerItem): Promise<void> => {
+export const migrateAnonymousData = async (userId: string): Promise<void> => {
   const db = await initDB();
-  const tx = db.transaction('planner', 'readwrite');
-  tx.objectStore('planner').put(item);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-};
-
-// --- Custom Command Helper Functions ---
-export const addCustomCommand = async (command: Omit<CustomCommand, 'id'>): Promise<string> => {
-  const db = await initDB();
-  const id = Date.now().toString();
-  const newCommand: CustomCommand = { ...command, id };
-  const tx = db.transaction('customCommands', 'readwrite');
-  tx.objectStore('customCommands').put(newCommand);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve(id);
-    tx.onerror = () => reject(tx.error);
-  });
-};
-
-export const getCustomCommands = async (userId: string): Promise<CustomCommand[]> => {
-  const db = await initDB();
-  const tx = db.transaction('customCommands', 'readonly');
-  const store = tx.objectStore('customCommands');
-  const index = store.index('userId');
-  const req = index.getAll(userId);
-  return new Promise((resolve, reject) => {
-    req.onsuccess = (event) => {
-      const target = event.target as IDBRequest;
-      resolve(target.result as CustomCommand[]);
+  const tx = db.transaction(['sessions', 'goals', 'planner', 'customCommands'], 'readwrite');
+  const stores = ['sessions', 'goals', 'planner', 'customCommands'];
+  
+  for (const storeName of stores) {
+    const store = tx.objectStore(storeName);
+    const req = store.getAll();
+    req.onsuccess = (e) => {
+      const records = (e.target as IDBRequest).result;
+      records.forEach((record: any) => {
+        if (!record.userId) {
+          record.userId = userId;
+          store.put(record);
+        }
+      });
     };
-    req.onerror = () => reject(req.error);
-  });
-};
-
-export const deleteCustomCommand = async (id: string): Promise<void> => {
-  const db = await initDB();
-  const tx = db.transaction('customCommands', 'readwrite');
-  tx.objectStore('customCommands').delete(id);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-};
-
-export const updateCustomCommand = async (command: CustomCommand): Promise<void> => {
-  const db = await initDB();
-  const tx = db.transaction('customCommands', 'readwrite');
-  tx.objectStore('customCommands').put(command);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-};
-
-// Additional helper functions for backward compatibility
-export const addGoal = async (goal: Omit<Goal, 'id'>): Promise<string> => {
-  const db = await initDB();
-  const id = Date.now().toString();
-  const newGoal: Goal = { ...goal, id, userId: goal.userId || 'anonymous' };
-  const tx = db.transaction('goals', 'readwrite');
-  tx.objectStore('goals').put(newGoal);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve(id);
-    tx.onerror = () => reject(tx.error);
-  });
-};
-
-export const deleteGoal = async (id: string): Promise<void> => {
-  const db = await initDB();
-  const tx = db.transaction('goals', 'readwrite');
-  tx.objectStore('goals').delete(id);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-};
-
-export const addPlannerItem = async (item: Omit<PlannerItem, 'id'>): Promise<string> => {
-  const db = await initDB();
-  const id = Date.now().toString();
-  const newItem: PlannerItem = { ...item, id, userId: item.userId || 'anonymous' };
-  const tx = db.transaction('planner', 'readwrite');
-  tx.objectStore('planner').put(newItem);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve(id);
-    tx.onerror = () => reject(tx.error);
-  });
-};
-
-export const deletePlannerItem = async (id: string): Promise<void> => {
-  const db = await initDB();
-  const tx = db.transaction('planner', 'readwrite');
-  tx.objectStore('planner').delete(id);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+  }
+  return new Promise(res => {
+    tx.oncomplete = () => res();
   });
 };
