@@ -15,59 +15,42 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
   const [activeTab, setActiveTab] = useState<'status' | 'commands' | 'ai' | 'history'>('status');
 
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     if (isOpen) window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
+  // 🚀 BATCH 7: Updated Tab Labels
   const tabs = [
-    { id: 'status', label: 'Status', icon: Mic },
-    { id: 'commands', label: 'Custom Commands', icon: Command },
-    { id: 'ai', label: 'AI Assistant', icon: Sparkles },
-    { id: 'history', label: 'History', icon: Clock },
+    { id: 'status', label: 'Voice Status', icon: Mic },
+    { id: 'commands', label: 'Bunny Commands', icon: Command },
+    { id: 'ai', label: 'Bunny Assistant', icon: Sparkles },
+    { id: 'history', label: 'Voice History', icon: Clock },
   ] as const;
 
   return (
-    <div 
-      className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in"
-      onClick={onClose}
-    >
-      <div 
-        className="bg-bunny-cream w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-2xl border border-bunny-border overflow-hidden flex flex-col animate-in zoom-in-95"
-        onClick={e => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="voice-modal-title"
-      >
-        {/* Header */}
+    <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" onClick={onClose}>
+      <div className="bg-bunny-cream w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-2xl border border-bunny-border overflow-hidden flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="voice-modal-title">
+        
         <div className="flex justify-between items-center p-5 border-b border-bunny-border bg-white flex-shrink-0">
           <h2 id="voice-modal-title" className="text-xl font-bold font-rounded flex items-center gap-2 text-bunny-text">
             <Settings className="w-5 h-5 text-bunny-primary" />
-            Voice Management
+            Bunny Voice
           </h2>
-          <button 
-            onClick={onClose} 
-            className="p-2 text-bunny-muted hover:text-bunny-error bg-bunny-cream hover:bg-red-50 rounded-full transition-colors" 
-            aria-label="Close"
-          >
+          <button onClick={onClose} className="p-2 text-bunny-muted hover:text-bunny-error bg-bunny-cream hover:bg-red-50 rounded-full transition-colors" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Navigation Tabs */}
         <div className="flex overflow-x-auto border-b border-bunny-border bg-white px-2 hide-scrollbar flex-shrink-0">
           {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-bold tracking-wide whitespace-nowrap transition-colors border-b-2 ${
-                activeTab === tab.id 
-                  ? 'border-bunny-primary text-bunny-primary' 
-                  : 'border-transparent text-bunny-muted hover:text-bunny-text hover:border-bunny-border'
+                activeTab === tab.id ? 'border-bunny-primary text-bunny-primary' : 'border-transparent text-bunny-muted hover:text-bunny-text hover:border-bunny-border'
               }`}
             >
               <tab.icon className="w-4 h-4" />
@@ -76,49 +59,25 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
           ))}
         </div>
 
-        {/* Content Area */}
         <div className="p-6 overflow-y-auto flex-1 bg-bunny-cream/50">
-          
-          {/* 1. Voice Status Panel */}
           {activeTab === 'status' && (
             <div className="space-y-6 max-w-sm mx-auto my-auto py-6">
               <Card className="flex flex-col items-center justify-center text-center p-8 bg-white border-bunny-border shadow-sm">
-                <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-5 transition-colors ${
-                  state === 'LISTENING' ? 'bg-bunny-primary text-white animate-pulse shadow-lg shadow-bunny-primary/30' : 
-                  state === 'DENIED' || state === 'ERROR' ? 'bg-bunny-error text-white' : 'bg-bunny-cream text-bunny-muted'
-                }`}>
+                <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-5 transition-colors ${state === 'LISTENING' ? 'bg-bunny-primary text-white animate-pulse shadow-lg shadow-bunny-primary/30' : state === 'DENIED' || state === 'ERROR' ? 'bg-bunny-error text-white' : 'bg-bunny-cream text-bunny-muted'}`}>
                   <Mic className="w-10 h-10" />
                 </div>
-                <h3 className="font-bold text-xl text-bunny-text mb-1">Microphone</h3>
-                <p className={`text-sm font-bold uppercase tracking-widest flex items-center justify-center gap-2 ${
-                  state === 'LISTENING' ? 'text-green-500' : 
-                  state === 'DENIED' || state === 'ERROR' ? 'text-bunny-error' : 'text-bunny-muted'
-                }`}>
-                  <span className="w-2 h-2 rounded-full bg-current"></span>
-                  {state}
+                <h3 className="font-bold text-xl text-bunny-text mb-1">Bunny Voice</h3>
+                <p className={`text-sm font-bold uppercase tracking-widest flex items-center justify-center gap-2 ${state === 'LISTENING' ? 'text-green-500' : state === 'DENIED' || state === 'ERROR' ? 'text-bunny-error' : 'text-bunny-muted'}`}>
+                  <span className="w-2 h-2 rounded-full bg-current"></span>{state}
                 </p>
               </Card>
-              
-              <Button 
-                onClick={() => toggleVoice()} 
-                className={`w-full py-4 text-base shadow-sm ${state === 'LISTENING' ? 'bg-bunny-error hover:bg-red-600' : 'bg-bunny-primary hover:bg-bunny-primary/90'}`}
-              >
+              <Button onClick={() => toggleVoice()} className={`w-full py-4 text-base shadow-sm ${state === 'LISTENING' ? 'bg-bunny-error hover:bg-red-600' : 'bg-bunny-primary hover:bg-bunny-primary/90'}`}>
                 {state === 'LISTENING' ? 'Turn Voice Off' : 'Turn Voice On'}
               </Button>
             </div>
           )}
-
-          {/* 2. Custom Commands Section */}
           {activeTab === 'commands' && <CustomCommandsTab />}
-
-          {/* 3. AI Assistant Section */}
-          {activeTab === 'ai' && (
-            <div className="h-full">
-              <AIAssistantTab />
-            </div>
-          )}
-
-          {/* 4. History Placeholder */}
+          {activeTab === 'ai' && <div className="h-full"><AIAssistantTab /></div>}
           {activeTab === 'history' && (
             <div className="flex flex-col items-center justify-center text-center h-full p-8 text-bunny-muted animate-in fade-in my-auto">
               <Clock className="w-16 h-16 mb-4 opacity-20 text-bunny-primary" />
@@ -126,7 +85,6 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
               <p className="text-sm max-w-xs leading-relaxed">Review a persistent log of your recent voice commands and transcriptions. Coming soon.</p>
             </div>
           )}
-
         </div>
       </div>
     </div>

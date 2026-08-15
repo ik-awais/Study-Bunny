@@ -120,7 +120,7 @@ export const PlannerView = () => {
     <div className="space-y-6 animate-in fade-in pb-20">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold font-rounded text-bunny-text">Study Planner</h1>
+          <h1 className="text-3xl font-bold font-rounded text-bunny-text">Bunny Planner</h1>
           <p className="text-bunny-muted">Organize your sessions and sync directly to the timer.</p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">

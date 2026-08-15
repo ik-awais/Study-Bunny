@@ -139,7 +139,7 @@ export const CustomCommandsTab = () => {
         <div>
           <h3 className="font-bold text-base text-bunny-text flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-bunny-primary" />
-            My Voice Commands
+            My Bunny Commands
           </h3>
           <p className="text-xs text-bunny-muted">Say any phrase or alias to trigger immediate actions.</p>
         </div>

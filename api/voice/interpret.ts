@@ -9,7 +9,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
   if (!NVIDIA_API_KEY) return res.status(500).json({ error: 'AI config missing on server.' });
 
-  const systemPrompt = `You are the Study Bunny AI assistant.
+  const systemPrompt = `You are Bunny Assistant.
 Current Date/Time: ${context?.currentDateTime || new Date().toISOString()}
 Active Goals: ${JSON.stringify(context?.goals || [])}
 Upcoming Planner: ${JSON.stringify(context?.planner || [])}

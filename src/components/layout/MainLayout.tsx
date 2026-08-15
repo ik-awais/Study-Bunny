@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Clock, Calendar, BarChart, Settings, Menu, Target, Mic, MicOff, AlertCircle } from 'lucide-react';
+import { Home, Clock, Calendar, BarChart, Settings, Menu, Target, Mic, MicOff} from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { BunnyWorld } from '../bunnies/BunnyWorld';
 import { ToastProvider } from '../ui/ToastProvider';
@@ -8,12 +8,13 @@ import { useVoiceCommand } from '../../hooks/useVoiceCommand';
 import { VoiceModal } from '../voice/VoiceModal';
 import { setGlobalNavigator } from '../../lib/navigationService';
 
+// 🚀 BATCH 7: Updated Nav Labels
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: Home },
-  { path: '/timer', label: 'Timer', icon: Clock },
-  { path: '/planner', label: 'Planner', icon: Calendar },
-  { path: '/goals', label: 'Goals', icon: Target },
-  { path: '/stats', label: 'Statistics', icon: BarChart },
+  { path: '/timer', label: 'Bunny Timer', icon: Clock },
+  { path: '/planner', label: 'Bunny Planner', icon: Calendar },
+  { path: '/goals', label: 'Bunny Goals', icon: Target },
+  { path: '/stats', label: 'Bunny Progress', icon: BarChart },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -39,7 +40,6 @@ export const MainLayout = () => {
       <BunnyWorld />
       <ToastProvider />
       
-      {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-bunny-card/90 backdrop-blur-md border-b border-bunny-border flex items-center justify-between px-4 z-50">
         <div className="flex items-center">
           <button onClick={toggleSidebar} className="p-2 hover:bg-bunny-blush rounded-xl transition-colors">
@@ -49,17 +49,16 @@ export const MainLayout = () => {
         </div>
         {state !== 'UNSUPPORTED' && (
           <div className="flex items-center gap-1 bg-white p-1 rounded-full border border-bunny-border shadow-sm">
-            <button onClick={() => toggleVoice()} className={`p-2 rounded-full transition-all ${getMicColor()}`} aria-label="Toggle Voice">
+            <button onClick={() => toggleVoice()} className={`p-2 rounded-full transition-all ${getMicColor()}`} aria-label="Toggle Bunny Voice">
               {state === 'LISTENING' ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
             </button>
-            <button onClick={() => setModalOpen(true)} className="p-2 text-bunny-muted hover:text-bunny-primary rounded-full transition-colors" aria-label="Voice Settings">
+            <button onClick={() => setModalOpen(true)} className="p-2 text-bunny-muted hover:text-bunny-primary rounded-full transition-colors" aria-label="Bunny Voice Settings">
               <Settings className="w-4 h-4" />
             </button>
           </div>
         )}
       </div>
 
-      {/* Sidebar */}
       <aside className={`fixed md:static inset-y-0 left-0 z-40 w-64 bg-bunny-card border-r border-bunny-border transform transition-transform duration-300 ease-in-out flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="h-full flex flex-col p-6">
           <div className="hidden md:flex items-center gap-3 mb-10">
@@ -86,26 +85,20 @@ export const MainLayout = () => {
              <div className="hidden md:flex flex-col mt-auto p-4 bg-bunny-cream rounded-2xl border border-bunny-border space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-sm font-bold text-bunny-muted">Voice Engine</span>
+                    <span className="text-sm font-bold text-bunny-muted">Bunny Voice</span>
                     <span className={`text-[10px] uppercase tracking-widest font-bold ${state === 'LISTENING' ? 'text-bunny-primary' : state === 'DENIED' || state === 'ERROR' ? 'text-bunny-error' : 'text-bunny-muted'}`}>
                       {state}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 bg-white p-1 rounded-full border border-bunny-border shadow-sm">
-                    <button onClick={() => toggleVoice()} className={`p-2 rounded-full transition-all ${getMicColor()}`} title="Toggle Voice (Ctrl+Shift+P)">
+                    <button onClick={() => toggleVoice()} className={`p-2 rounded-full transition-all ${getMicColor()}`} title="Toggle Bunny Voice (Ctrl+Shift+P)">
                       {state === 'LISTENING' ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
                     </button>
-                    <button onClick={() => setModalOpen(true)} className="p-2 text-bunny-muted hover:text-bunny-primary rounded-full transition-colors" title="Voice Settings">
+                    <button onClick={() => setModalOpen(true)} className="p-2 text-bunny-muted hover:text-bunny-primary rounded-full transition-colors" title="Bunny Voice Settings">
                       <Settings className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-                {state === 'DENIED' && (
-                  <div className="text-[10px] font-bold text-bunny-error flex gap-1 items-start bg-bunny-error/10 p-2 rounded-lg">
-                    <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                    <span>Please allow microphone access.</span>
-                  </div>
-                )}
              </div>
           )}
         </div>

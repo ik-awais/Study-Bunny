@@ -1,10 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Plus, Trash2, Sparkles, User, Loader2 } from 'lucide-react';
 import { useDataStore } from '../../store/useDataStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useTimerStore } from '../../store/useTimerStore';
 import { executeAIActions } from '../../lib/CommandRegistry';
+import { formatDuration } from '../../lib/timeUtils';
 import { Button, Input } from '../ui/SharedUI';
 
 export const AIAssistantTab = () => {
+  const { user } = useAuthStore();
+  const timerStore = useTimerStore();
   const { aiConversations, currentChatMessages, loadAiMessages, saveAiMessage, deleteAiConversation, goals, planner, stats } = useDataStore();
   
   const [activeChatId, setActiveChatId] = useState<string>('');
@@ -12,7 +17,6 @@ export const AIAssistantTab = () => {
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Initialize or load chat
   useEffect(() => {
     if (aiConversations.length > 0 && !activeChatId) {
       setActiveChatId(aiConversations[0].id);
@@ -29,7 +33,7 @@ export const AIAssistantTab = () => {
 
   const handleNewChat = () => {
     setActiveChatId(`chat_${Date.now()}`);
-    loadAiMessages(''); // clear local view
+    loadAiMessages(''); 
   };
 
   const handleClearChat = () => {
@@ -49,7 +53,6 @@ export const AIAssistantTab = () => {
     setInput('');
     setIsTyping(true);
 
-    // Save user message
     await saveAiMessage(chatId, 'user', text, text.slice(0, 30));
 
     try {
@@ -58,29 +61,43 @@ export const AIAssistantTab = () => {
         { role: 'user', content: text }
       ];
 
+      // 🚀 THE SECURE CONTEXT BUILDER
+      const contextPayload = {
+        user: { name: user?.name?.split(' ')[0] },
+        currentDateTime: new Date().toLocaleString(),
+        stats: {
+          today: formatDuration(stats.todayMs, { compact: false }),
+          weekly: formatDuration(stats.weeklyMs, { compact: false }),
+          streak: stats.streak
+        },
+        goals: goals.filter(g => g.status === 'active').map(g => ({
+          title: g.title, target: formatDuration(g.targetMs, { compact: true })
+        })),
+        planner: planner.filter(p => !p.completed).map(p => ({
+          title: p.title, subject: p.subject, date: p.date, startTime: p.startTime
+        })),
+        timer: {
+          status: timerStore.status,
+          phase: timerStore.phase,
+          subject: timerStore.context?.subject || 'None'
+        }
+      };
+
       const res = await fetch('/api/voice/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: messagesPayload,
-          context: {
-            currentDateTime: new Date().toISOString(),
-            stats,
-            goals: goals.filter(g => g.status === 'active'),
-            planner: planner.filter(p => !p.completed)
-          }
+          context: contextPayload
         })
       });
 
       const data = await res.json();
-      
-      // Save AI textual response
       await saveAiMessage(chatId, 'assistant', data.message);
 
-      // Execute AI Actions if any were requested
       if (data.actions && data.actions.length > 0) {
         if (data.requiresConfirmation) {
-          if (window.confirm(`Study Bunny wants to execute actions based on your request.\n\nProceed?`)) {
+          if (window.confirm(`Bunny Assistant wants to execute actions based on your request.\n\nProceed?`)) {
             await executeAIActions(data.actions);
           }
         } else {
@@ -95,7 +112,6 @@ export const AIAssistantTab = () => {
   };
 
   const renderMarkdown = (text: string) => {
-    // Basic Markdown: **bold**, *italic*, \n to <br>
     return text.split('\n').map((line, i) => {
       let formatted = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
       formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
@@ -106,8 +122,6 @@ export const AIAssistantTab = () => {
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-bunny-border overflow-hidden shadow-sm animate-in fade-in">
-      
-      {/* Header */}
       <div className="flex justify-between items-center p-3 border-b border-bunny-border bg-bunny-cream/50">
         <select 
           className="text-sm font-bold text-bunny-text bg-transparent outline-none max-w-[200px] truncate cursor-pointer"
@@ -133,12 +147,11 @@ export const AIAssistantTab = () => {
         </div>
       </div>
 
-      {/* Chat Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-bunny-cream/20">
         {currentChatMessages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center opacity-70">
             <Sparkles className="w-12 h-12 text-bunny-primary mb-3" />
-            <h3 className="font-bold text-bunny-text mb-2">Ask Study Bunny</h3>
+            <h3 className="font-bold text-bunny-text mb-2">Ask Bunny Assistant</h3>
             <div className="flex flex-col gap-2 mt-4">
               {['How much have I studied this week?', 'What should I focus on today?', 'Schedule a 2 hour physics session tomorrow.'].map(prompt => (
                 <button 
@@ -188,7 +201,6 @@ export const AIAssistantTab = () => {
         )}
       </div>
 
-      {/* Input Area */}
       <div className="p-3 border-t border-bunny-border bg-white flex gap-2">
         <Input 
           value={input}
