@@ -31,20 +31,20 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
   ] as const;
 
   return (
-    <div 
-      className={`fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center animate-in fade-in ${isMaximized ? 'p-0 sm:p-4' : 'p-4'}`} 
-      onClick={onClose}
-    >
+    <div className={`fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center animate-in fade-in ${isMaximized ? 'p-0 sm:p-4' : 'p-4'}`} onClick={onClose}>
+      
+      {/* 🚀 MODAL SHELL - Enforces hard boundaries so the inner scrollbars work */}
       <div 
         className={`bg-bunny-cream w-full overflow-hidden flex flex-col shadow-2xl border border-bunny-border animate-in zoom-in-95 transition-all duration-300 ${
-          isMaximized ? 'h-full max-w-7xl rounded-none sm:rounded-3xl' : 'max-h-[85vh] max-w-2xl rounded-3xl'
+          isMaximized ? 'h-full max-w-7xl rounded-none sm:rounded-3xl' : 'h-[85vh] max-h-[800px] max-w-2xl rounded-3xl'
         }`} 
         onClick={e => e.stopPropagation()} 
         role="dialog" 
-        aria-modal="true"
+        aria-modal="true" 
+        aria-labelledby="voice-modal-title"
       >
         
-        {/* Hide header and tabs if Maximized (Chat handles its own header) */}
+        {/* Only show default tabs if NOT maximized */}
         {!isMaximized && (
           <>
             <div className="flex justify-between items-center p-5 border-b border-bunny-border bg-white flex-shrink-0">
@@ -74,8 +74,9 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
           </>
         )}
 
-        {/* Content Area */}
+        {/* 🚀 CONTENT WRAPPER - flex-1 min-h-0 is mandatory to prevent child blowout */}
         <div className={`flex-1 flex flex-col bg-bunny-cream/50 overflow-hidden ${isMaximized || activeTab === 'ai' ? 'p-0' : 'p-6 overflow-y-auto'}`}>
+          
           {activeTab === 'status' && !isMaximized && (
             <div className="space-y-6 max-w-sm mx-auto my-auto py-6">
               <Card className="flex flex-col items-center justify-center text-center p-8 bg-white border-bunny-border shadow-sm">
@@ -92,15 +93,16 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
               </Button>
             </div>
           )}
-          
+
           {activeTab === 'commands' && !isMaximized && <CustomCommandsTab />}
           
+          {/* 🚀 AI TAB WRAPPER */}
           {activeTab === 'ai' && (
-            <div className="h-full">
-              <AIAssistantTab isMaximized={isMaximized} setIsMaximized={setIsMaximized} />
-            </div>
+             <div className="flex-1 min-h-0 flex flex-col w-full h-full">
+               <AIAssistantTab isMaximized={isMaximized} setIsMaximized={setIsMaximized} onClose={onClose} />
+             </div>
           )}
-          
+
           {activeTab === 'history' && !isMaximized && (
             <div className="flex flex-col items-center justify-center text-center h-full p-8 text-bunny-muted animate-in fade-in my-auto">
               <Clock className="w-16 h-16 mb-4 opacity-20 text-bunny-primary" />
@@ -108,6 +110,7 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
               <p className="text-sm max-w-xs leading-relaxed">Review a persistent log of your recent voice commands and transcriptions. Coming soon.</p>
             </div>
           )}
+
         </div>
       </div>
     </div>

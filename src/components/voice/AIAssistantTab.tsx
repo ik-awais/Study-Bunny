@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Send, Plus, Sparkles, User, Loader2, Maximize2, Minimize2, Mic, CheckCircle, XCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Send, Plus, Sparkles, User, Loader2, Maximize2, Minimize2, Mic, CheckCircle, XCircle, X } from 'lucide-react';
 import { useDataStore } from '../../store/useDataStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTimerStore } from '../../store/useTimerStore';
@@ -13,9 +13,10 @@ declare global { interface Window { SpeechRecognition: any; webkitSpeechRecognit
 interface AIAssistantTabProps {
   isMaximized: boolean;
   setIsMaximized: (val: boolean) => void;
+  onClose: () => void;
 }
 
-export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabProps) => {
+export const AIAssistantTab = ({ isMaximized, setIsMaximized, onClose }: AIAssistantTabProps) => {
   const { user } = useAuthStore();
   const timerStore = useTimerStore();
   const { aiConversations, currentChatMessages, loadAiMessages, saveAiMessage, updateAiMessage, goals, planner, stats } = useDataStore();
@@ -24,6 +25,8 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isDictating, setIsDictating] = useState(false);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -35,9 +38,18 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
     if (activeChatId) loadAiMessages(activeChatId);
   }, [activeChatId, loadAiMessages]);
 
+  // 🚀 Smart Auto-Scroll Behavior
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement;
+    const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50; // 50px buffer
+    setShouldAutoScroll(isAtBottom);
+  };
+
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [currentChatMessages, isTyping]);
+    if (shouldAutoScroll && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [currentChatMessages, isTyping, shouldAutoScroll]);
 
   const handleNewChat = () => {
     setActiveChatId(`chat_${Date.now()}`);
@@ -77,6 +89,7 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
     
     setInput('');
     setIsTyping(true);
+    setShouldAutoScroll(true); // Force scroll to bottom on new message
 
     await saveAiMessage(chatId, 'user', text, text.slice(0, 30));
 
@@ -115,13 +128,10 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
 
   const executeProposal = async (msg: AIMessage) => {
     if (!msg.proposal || msg.proposalState !== 'PENDING') return;
-    
     await updateAiMessage(msg.id, { proposalState: 'EXECUTED' });
     const success = await executeAIActions(msg.proposal.actions);
-    
-    if (success) {
-      await saveAiMessage(msg.conversationId, 'assistant', 'Done! I have applied the changes to your Bunny Planner.');
-    } else {
+    if (success) await saveAiMessage(msg.conversationId, 'assistant', 'Done! I have applied the changes to your Bunny Planner.');
+    else {
       await updateAiMessage(msg.id, { proposalState: 'FAILED' });
       await saveAiMessage(msg.conversationId, 'assistant', 'I encountered an error and could not complete the plan. No changes were applied.');
     }
@@ -141,14 +151,14 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
   };
 
   return (
-    <div className={`flex flex-col h-full bg-white overflow-hidden animate-in fade-in ${isMaximized ? '' : 'sm:rounded-b-3xl'}`}>
+    <div className={`flex flex-col h-full w-full bg-white overflow-hidden animate-in fade-in ${isMaximized ? '' : 'sm:rounded-b-3xl'}`}>
       
       {/* 🚀 STICKY HEADER - Flex None ensures it NEVER scrolls away */}
       <div className="flex-none flex justify-between items-center p-3 border-b border-bunny-border bg-bunny-cream/95 backdrop-blur-md z-20 shadow-sm">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-bunny-primary hidden sm:block" />
           <select 
-            className="text-sm font-bold text-bunny-text bg-white border border-bunny-border rounded-lg px-2 py-1.5 outline-none max-w-[150px] sm:max-w-[200px] truncate cursor-pointer shadow-sm"
+            className="text-sm font-bold text-bunny-text bg-white border border-bunny-border rounded-lg px-2 py-1.5 outline-none max-w-[140px] sm:max-w-[200px] truncate cursor-pointer shadow-sm"
             value={activeChatId}
             onChange={(e) => setActiveChatId(e.target.value)}
           >
@@ -158,22 +168,33 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
           </select>
         </div>
         
-        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-bunny-border shadow-sm">
+        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-bunny-border shadow-sm flex-shrink-0">
           <Button onClick={handleNewChat} variant="ghost" className="p-1.5 text-bunny-primary hover:bg-bunny-primary/10 rounded-lg text-xs gap-1 hidden sm:flex">
             <Plus className="w-3.5 h-3.5" /> New Chat
           </Button>
           <Button onClick={handleNewChat} variant="ghost" className="p-1.5 text-bunny-primary hover:bg-bunny-primary/10 rounded-lg sm:hidden" title="New Chat">
             <Plus className="w-4 h-4" />
           </Button>
+          
           <div className="w-px h-4 bg-bunny-border mx-1"></div>
+          
           <Button onClick={() => setIsMaximized(!isMaximized)} variant="ghost" className="p-1.5 text-bunny-muted hover:text-bunny-primary hover:bg-bunny-cream rounded-lg" title={isMaximized ? "Minimize" : "Maximize"}>
             {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </Button>
+          
+          {/* 🚀 DIRECT FULLSCREEN CLOSE BUTTON */}
+          <Button onClick={onClose} variant="ghost" className="p-1.5 text-bunny-muted hover:text-bunny-error hover:bg-red-50 rounded-lg" title="Close Assistant">
+            <X className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
-      {/* 🚀 INDEPENDENT SCROLL AREA - Flex 1 takes remaining height */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-bunny-cream/20">
+      {/* 🚀 INDEPENDENT SCROLL AREA - Flex 1 min-h-0 securely bounds the scrollbar */}
+      <div 
+        ref={scrollRef} 
+        onScroll={handleScroll}
+        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-bunny-cream/20"
+      >
         {currentChatMessages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center opacity-70">
             <Sparkles className="w-12 h-12 text-bunny-primary mb-3" />
@@ -239,7 +260,7 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
       <div className="flex-none p-3 border-t border-bunny-border bg-white flex gap-2 items-center z-20">
         <button 
           onClick={toggleDictation}
-          className={`p-2.5 rounded-xl transition-colors border shadow-sm ${isDictating ? 'bg-red-50 border-red-200 text-red-500 animate-pulse' : 'bg-bunny-cream border-bunny-border text-bunny-muted hover:text-bunny-primary hover:border-bunny-primary/30'}`}
+          className={`p-2.5 rounded-xl transition-colors border shadow-sm flex-shrink-0 ${isDictating ? 'bg-red-50 border-red-200 text-red-500 animate-pulse' : 'bg-bunny-cream border-bunny-border text-bunny-muted hover:text-bunny-primary hover:border-bunny-primary/30'}`}
           title="Dictate message"
         >
           <Mic className="w-5 h-5" />
@@ -250,10 +271,10 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder={isDictating ? "Listening..." : "Ask Bunny Assistant..."}
-          className="flex-1 bg-bunny-cream/30 focus:bg-white"
+          className="flex-1 bg-bunny-cream/30 focus:bg-white min-w-0"
           disabled={isTyping}
         />
-        <Button onClick={() => handleSend()} disabled={!input.trim() || isTyping} className="px-4 shadow-md"><Send className="w-4 h-4" /></Button>
+        <Button onClick={() => handleSend()} disabled={!input.trim() || isTyping} className="px-4 shadow-md flex-shrink-0"><Send className="w-4 h-4" /></Button>
       </div>
     </div>
   );
