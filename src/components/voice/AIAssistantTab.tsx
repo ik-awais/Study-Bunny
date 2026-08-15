@@ -141,14 +141,14 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
   };
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-2xl border border-bunny-border overflow-hidden shadow-sm animate-in fade-in">
+    <div className={`flex flex-col h-full bg-white overflow-hidden animate-in fade-in ${isMaximized ? '' : 'sm:rounded-b-3xl'}`}>
       
-      {/* 🚀 STICKY HEADER */}
-      <div className="flex justify-between items-center p-3 border-b border-bunny-border bg-bunny-cream/90 backdrop-blur-md sticky top-0 z-10">
+      {/* 🚀 STICKY HEADER - Flex None ensures it NEVER scrolls away */}
+      <div className="flex-none flex justify-between items-center p-3 border-b border-bunny-border bg-bunny-cream/95 backdrop-blur-md z-20 shadow-sm">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-bunny-primary hidden sm:block" />
           <select 
-            className="text-sm font-bold text-bunny-text bg-white border border-bunny-border rounded-lg px-2 py-1 outline-none max-w-[150px] sm:max-w-[200px] truncate cursor-pointer"
+            className="text-sm font-bold text-bunny-text bg-white border border-bunny-border rounded-lg px-2 py-1.5 outline-none max-w-[150px] sm:max-w-[200px] truncate cursor-pointer shadow-sm"
             value={activeChatId}
             onChange={(e) => setActiveChatId(e.target.value)}
           >
@@ -158,20 +158,21 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
           </select>
         </div>
         
-        <div className="flex items-center gap-1">
-          <Button onClick={handleNewChat} variant="ghost" className="p-2 text-bunny-primary hover:bg-bunny-primary/10 rounded-lg text-xs gap-1 hidden sm:flex">
+        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-bunny-border shadow-sm">
+          <Button onClick={handleNewChat} variant="ghost" className="p-1.5 text-bunny-primary hover:bg-bunny-primary/10 rounded-lg text-xs gap-1 hidden sm:flex">
             <Plus className="w-3.5 h-3.5" /> New Chat
           </Button>
-          <Button onClick={handleNewChat} variant="ghost" className="p-2 text-bunny-primary hover:bg-bunny-primary/10 rounded-lg sm:hidden">
+          <Button onClick={handleNewChat} variant="ghost" className="p-1.5 text-bunny-primary hover:bg-bunny-primary/10 rounded-lg sm:hidden" title="New Chat">
             <Plus className="w-4 h-4" />
           </Button>
-          
-          <Button onClick={() => setIsMaximized(!isMaximized)} variant="ghost" className="p-2 text-bunny-muted hover:text-bunny-primary hover:bg-bunny-cream rounded-lg" title={isMaximized ? "Minimize" : "Maximize"}>
+          <div className="w-px h-4 bg-bunny-border mx-1"></div>
+          <Button onClick={() => setIsMaximized(!isMaximized)} variant="ghost" className="p-1.5 text-bunny-muted hover:text-bunny-primary hover:bg-bunny-cream rounded-lg" title={isMaximized ? "Minimize" : "Maximize"}>
             {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </Button>
         </div>
       </div>
 
+      {/* 🚀 INDEPENDENT SCROLL AREA - Flex 1 takes remaining height */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-bunny-cream/20">
         {currentChatMessages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center opacity-70">
@@ -199,7 +200,6 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
                   {renderMarkdown(msg.content)}
                 </div>
 
-                {/* 🚀 PROPOSAL CARD UX */}
                 {msg.proposal && (
                   <Card className="mt-2 p-4 bg-white border-2 border-bunny-primary/30 shadow-md">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-bunny-primary mb-2 flex items-center gap-1"><Sparkles className="w-3.5 h-3.5"/> Proposed Action</h4>
@@ -219,7 +219,7 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
               </div>
 
               {msg.role === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-bunny-cream text-bunny-muted border border-bunny-border flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-bunny-cream text-bunny-muted border border-bunny-border flex items-center justify-center flex-shrink-0 shadow-sm">
                   <User className="w-4 h-4" />
                 </div>
               )}
@@ -235,8 +235,8 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
         )}
       </div>
 
-      <div className="p-3 border-t border-bunny-border bg-white flex gap-2 items-center">
-        {/* 🚀 ISOLATED DICTATION MIC */}
+      {/* 🚀 FIXED COMPOSER - Flex None ensures it docks to the bottom */}
+      <div className="flex-none p-3 border-t border-bunny-border bg-white flex gap-2 items-center z-20">
         <button 
           onClick={toggleDictation}
           className={`p-2.5 rounded-xl transition-colors border shadow-sm ${isDictating ? 'bg-red-50 border-red-200 text-red-500 animate-pulse' : 'bg-bunny-cream border-bunny-border text-bunny-muted hover:text-bunny-primary hover:border-bunny-primary/30'}`}
@@ -250,7 +250,7 @@ export const AIAssistantTab = ({ isMaximized, setIsMaximized }: AIAssistantTabPr
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder={isDictating ? "Listening..." : "Ask Bunny Assistant..."}
-          className="flex-1"
+          className="flex-1 bg-bunny-cream/30 focus:bg-white"
           disabled={isTyping}
         />
         <Button onClick={() => handleSend()} disabled={!input.trim() || isTyping} className="px-4 shadow-md"><Send className="w-4 h-4" /></Button>

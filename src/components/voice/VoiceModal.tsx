@@ -75,7 +75,7 @@ export const VoiceModal = ({ isOpen, onClose }: VoiceModalProps) => {
         )}
 
         {/* Content Area */}
-        <div className={`overflow-y-auto flex-1 bg-bunny-cream/50 ${isMaximized ? 'p-0' : 'p-6'}`}>
+        <div className={`flex-1 flex flex-col bg-bunny-cream/50 overflow-hidden ${isMaximized || activeTab === 'ai' ? 'p-0' : 'p-6 overflow-y-auto'}`}>
           {activeTab === 'status' && !isMaximized && (
             <div className="space-y-6 max-w-sm mx-auto my-auto py-6">
               <Card className="flex flex-col items-center justify-center text-center p-8 bg-white border-bunny-border shadow-sm">
